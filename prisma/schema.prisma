@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Recipe {
+  id          Int      @id @default(autoincrement())
+  title       String
+  summary     String
+  instructions String
+  ingredients  Ingredient[] @relation("RecipeIngredients")
+  startSeason  Int      // 1 to 12 (January to December)
+  endSeason    Int      // 1 to 12 (January to December)
+  grade       Int      @default(0) // 0 to 3 stars
+  time        Int      // minutes
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Ingredient {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  startSeason Int      // 1 to 12 (January to December)
+  endSeason   Int      // 1 to 12 (January to December)
+  recipes     Recipe[] @relation("RecipeIngredients")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
