@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
+import { PhotoImportButton } from "@/components/photo-import-button"
 
 type ImportedRecipe = {
   title: string
@@ -70,6 +71,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
         />
         <div className="flex gap-2">
           <ImportRecipeDialog onImport={onRefresh} setProcessingRecipeId={setProcessingRecipeId} />
+          <PhotoImportButton onImport={onRefresh} setProcessingRecipeId={setProcessingRecipeId} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="ml-2">

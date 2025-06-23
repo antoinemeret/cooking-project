@@ -13,26 +13,26 @@
 
 ## Tasks
 
--   [ ] 1.0 Setup Backend Dependencies for OCR and LLM
+-   [x] 1.0 Setup Backend Dependencies for OCR and LLM
     -   [x] 1.1 In `package.json`, add `tesseract.js` as a dependency for OCR.
     -   [x] 1.2 Add the `ollama` npm package as a dependency to communicate with the local LLM.
     -   [x] 1.3 Run `npm install` to install the new dependencies.
 
--   [ ] 2.0 Create API Endpoint for Photo Import
-    -   [ ] 2.1 Create the new API route file: `src/app/api/recipes/import-photo/route.ts`.
-    -   [ ] 2.2 Implement the `POST` handler to accept `multipart/form-data`.
-    -   [ ] 2.3 Use `tesseract.js` within the handler to perform OCR on the uploaded image buffer and extract raw text.
-    -   [ ] 2.4 Craft a detailed prompt for the `mistral:7b-instruct` model, instructing it to return a JSON object containing `title`, `rawIngredients` (as an array of strings), and `instructions`, accounting for common recipe layouts.
-    -   [ ] 2.5 Use the `ollama` package to send the extracted text and prompt to the LLM.
-    -   [ ] 2.6 Parse the LLM's JSON response and return it from the API endpoint with a 200 status.
+-   [x] 2.0 Create API Endpoint for Photo Import
+    -   [x] 2.1 Create the new API route file: `src/app/api/recipes/import-photo/route.ts`.
+    -   [x] 2.2 Implement the `POST` handler to accept `multipart/form-data`.
+    -   [x] 2.3 Use `tesseract.js` within the handler to perform OCR on the uploaded image buffer and extract raw text.
+    -   [x] 2.4 Craft a detailed prompt for the `mistral:7b-instruct` model, instructing it to return a JSON object containing `title`, `rawIngredients` (as an array of strings), and `instructions`, accounting for common recipe layouts.
+    -   [x] 2.5 Use the `ollama` package to send the extracted text and prompt to the LLM.
+    -   [x] 2.6 Parse the LLM's JSON response and return it from the API endpoint with a 200 status.
 
--   [ ] 3.0 Develop Frontend UI for File Upload and Status Display
-    -   [ ] 3.1 Create a new client component file: `src/components/photo-import-button.tsx`.
-    -   [ ] 3.2 In this component, render a button and a hidden `input type="file"` restricted to `image/jpeg` and `image/png`.
-    -   [ ] 3.3 On file selection, use the `fetch` API to send the image to `/api/recipes/import-photo`.
-    -   [ ] 3.4 Implement a state management system (e.g., using `useState`) to track the upload and processing progress.
-    -   [ ] 3.5 Display multi-step status updates to the user (e.g., using toasts or a dedicated status component) for "Uploading," "Reading," and "Formatting."
-    -   [ ] 3.6 Add the new `<PhotoImportButton />` to `src/app/recipes/page.tsx`.
+-   [x] 3.0 Develop Frontend UI for File Upload and Status Display
+    -   [x] 3.1 Create a new client component file: `src/components/photo-import-button.tsx`.
+    -   [x] 3.2 In this component, render a button and a hidden `input type="file"` restricted to `image/jpeg` and `image/png`.
+    -   [x] 3.3 On file selection, use the `fetch` API to send the image to `/api/recipes/import-photo`.
+    -   [x] 3.4 Implement a state management system (e.g., using `useState`) to track the upload and processing progress.
+    -   [x] 3.5 Display multi-step status updates to the user (e.g., using toasts or a dedicated status component) for "Uploading," "Reading," and "Formatting."
+    -   [x] 3.6 Add the new `<PhotoImportButton />` to `src/app/recipes/page.tsx`.
 
 -   [ ] 4.0 Integrate Photo Import Data with Existing Recipe Preview and Save Flow
     -   [ ] 4.1 From `photo-import-button.tsx`, on successful API response, call the function that opens the existing recipe import dialog (this logic is likely in `data-table.tsx` or passed via props).
