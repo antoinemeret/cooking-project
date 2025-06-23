@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
-import { createWorker } from "tesseract.js";
 import { Ollama } from "ollama";
+import { spawn } from "child_process";
+import fs from "fs/promises";
+import path from "path";
+import os from "os";
 
 const getPrompt = (text: string) => `
 You are an expert recipe parser. Your task is to analyze the following text, which was extracted from a recipe photo via OCR, and convert it into a structured JSON object.
@@ -30,6 +33,38 @@ ${text}
 ---
 `;
 
+const runOcrScript = (imagePath: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.join(process.cwd(), "scripts", "ocr.js");
+    const child = spawn("node", [scriptPath, imagePath]);
+
+    let output = "";
+    let errorOutput = "";
+
+    child.stdout.on("data", (data) => {
+      output += data.toString();
+    });
+
+    child.stderr.on("data", (data) => {
+      errorOutput += data.toString();
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        console.error(`OCR script exited with code ${code}: ${errorOutput}`);
+        reject(new Error(`OCR process failed.`));
+      } else {
+        resolve(output);
+      }
+    });
+
+    child.on("error", (err) => {
+      console.error("Failed to start OCR script.", err);
+      reject(err);
+    });
+  });
+};
+
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
@@ -42,36 +77,62 @@ export async function POST(req: NextRequest) {
   }
 
   const imageBuffer = Buffer.from(await file.arrayBuffer());
+  const tempFilePath = path.join(os.tmpdir(), `ocr-temp-${Date.now()}-${file.name}`);
 
   const stream = new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder();
-      const enqueue = (data: object) =>
-        controller.enqueue(encoder.encode(JSON.stringify(data)));
+      const sendJSON = (data: object) => {
+        controller.enqueue(encoder.encode(JSON.stringify(data) + '\n'));
+      };
 
       try {
-        enqueue({ status: "Reading recipe text..." });
-        const worker = await createWorker("eng+fra");
-        const {
-          data: { text },
-        } = await worker.recognize(imageBuffer);
-        await worker.terminate();
+        await fs.writeFile(tempFilePath, imageBuffer);
 
-        enqueue({ status: "Formatting recipe..." });
+        sendJSON({ status: "Reading recipe text..." });
+        const text = await runOcrScript(tempFilePath);
+        console.log("Extracted text:", text);
+        
+        sendJSON({ status: "Formatting recipe..." });
         const ollama = new Ollama();
         const response = await ollama.chat({
           model: "mistral:7b-instruct",
           messages: [{ role: "user", content: getPrompt(text) }],
           format: "json",
+          stream: false,
         });
 
-        const structuredData = JSON.parse(response.message.content);
-        enqueue({ status: "done", data: structuredData });
+        let structuredData;
+        try {
+          structuredData = JSON.parse(response.message.content);
+        } catch (jsonError) {
+          console.log("Failed to parse JSON, attempting to repair...");
+          const repairResponse = await ollama.chat({
+            model: "mistral:7b-instruct", // Or a more powerful model if available
+            messages: [
+              {
+                role: "user",
+                content: `The following JSON is malformed. Please fix it and return only the corrected JSON object. Do not add any commentary.\n\n${response.message.content}`,
+              },
+            ],
+            format: "json",
+            stream: false,
+          });
+          structuredData = JSON.parse(repairResponse.message.content);
+        }
+        
+        sendJSON({ status: "done", data: structuredData });
       } catch (error) {
-        console.error("An error occurred during import:", error);
-        enqueue({ status: "error", error: "Failed to process the recipe." });
+        console.error("Error processing photo import:", error);
+        sendJSON({ status: 'error', error: 'Failed to process the recipe.' });
       } finally {
         controller.close();
+        // Clean up the temporary file
+        try {
+          await fs.unlink(tempFilePath);
+        } catch (cleanupError) {
+          console.error("Failed to clean up temporary file:", cleanupError);
+        }
       }
     },
   });
