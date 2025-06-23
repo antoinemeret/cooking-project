@@ -3,14 +3,18 @@
 import { useRef, ChangeEvent, useState } from "react";
 import { Button } from "@/components/ui/button";
 
+type ImportedRecipe = {
+  title: string;
+  rawIngredients: string[];
+  instructions: string;
+};
+
 type PhotoImportButtonProps = {
-  onImport: () => void;
-  setProcessingRecipeId: (id: number | null) => void;
+  onImportSuccess: (recipe: ImportedRecipe) => void;
 };
 
 export function PhotoImportButton({
-  onImport,
-  setProcessingRecipeId,
+  onImportSuccess,
 }: PhotoImportButtonProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [statusMessage, setStatusMessage] = useState("Import from Photo");
@@ -54,7 +58,8 @@ export function PhotoImportButton({
 
         if (eventData.status === "done") {
           console.log("Parsed recipe data:", eventData.data);
-          // Integration with dialog comes next
+          onImportSuccess(eventData.data as ImportedRecipe);
+          setStatusMessage("Done!");
         }
 
         if (eventData.status === "error") {
@@ -69,7 +74,7 @@ export function PhotoImportButton({
     } finally {
       setIsImporting(false);
       // Reset button text after a delay if it wasn't a success
-      if (statusMessage !== "done") {
+      if (statusMessage !== "Done!") {
         setTimeout(() => setStatusMessage("Import from Photo"), 3000);
       }
     }

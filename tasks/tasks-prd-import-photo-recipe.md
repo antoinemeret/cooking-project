@@ -35,10 +35,10 @@
     -   [x] 3.6 Add the new `<PhotoImportButton />` to `src/app/recipes/page.tsx`.
 
 -   [ ] 4.0 Integrate Photo Import Data with Existing Recipe Preview and Save Flow
-    -   [ ] 4.1 From `photo-import-button.tsx`, on successful API response, call the function that opens the existing recipe import dialog (this logic is likely in `data-table.tsx` or passed via props).
-    -   [ ] 4.2 Modify the state or props for the existing dialog to accept and pre-fill the form fields with the `title`, `rawIngredients`, and `instructions` from the photo import API.
-    -   [ ] 4.3 Verify that the existing "Save" button in the dialog correctly saves the new recipe to the database via Prisma.
-    -   [ ] 4.4 Confirm that the asynchronous follow-up jobs (`/generate-summary`, `/process-ingredients`) are triggered after saving the recipe, reusing the existing logic.
+    -   [x] 4.1 From `photo-import-button.tsx`, on successful API response, call the function that opens the existing recipe import dialog (this logic is likely in `data-table.tsx` or passed via props).
+    -   [x] 4.2 Modify the state or props for the existing dialog to accept and pre-fill the form fields with the `title`, `rawIngredients`, and `instructions` from the photo import API.
+    -   [x] 4.3 Verify that the existing "Save" button in the dialog correctly saves the new recipe to the database via Prisma.
+    -   [x] 4.4 Confirm that the asynchronous follow-up jobs (`/generate-summary`, `/process-ingredients`) are triggered after saving the recipe, reusing the existing logic.
 
 -   [ ] 5.0 Implement Error Handling and Final Integrations
     -   [ ] 5.1 In `photo-import-button.tsx`, add a `catch` block to the fetch call to handle API errors.

@@ -39,9 +39,10 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 50
-  const [open, setOpen] = useState(false)
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [importedRecipe, setImportedRecipe] = useState<ImportedRecipe | null>(null)
+  const [isManualMode, setIsManualMode] = useState(false)
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null)
-  const [recipe, setRecipe] = useState<ImportedRecipe | null>(null)
   const [processingRecipeId, setProcessingRecipeId] = useState<number | null>(null)
 
   const table = useReactTable({
@@ -70,8 +71,22 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
           className="max-w-sm"
         />
         <div className="flex gap-2">
-          <ImportRecipeDialog onImport={onRefresh} setProcessingRecipeId={setProcessingRecipeId} />
-          <PhotoImportButton onImport={onRefresh} setProcessingRecipeId={setProcessingRecipeId} />
+          <ImportRecipeDialog
+            open={isImportDialogOpen}
+            onOpenChange={setIsImportDialogOpen}
+            recipe={importedRecipe}
+            setRecipe={setImportedRecipe}
+            isManualMode={isManualMode}
+            setIsManualMode={setIsManualMode}
+            onImport={onRefresh}
+            setProcessingRecipeId={setProcessingRecipeId}
+          />
+          <PhotoImportButton
+            onImportSuccess={(recipe) => {
+              setImportedRecipe(recipe);
+              setIsImportDialogOpen(true);
+            }}
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="ml-2">
@@ -115,7 +130,11 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                 if (cell.column.id === 'title') {
                   return (
                     <TableCell key={cell.id}>
-                      <Sheet open={open} onOpenChange={setOpen}>
+                      <Sheet open={selectedRecipe !== null} onOpenChange={(newOpen) => {
+                        if (!newOpen) {
+                          setSelectedRecipe(null)
+                        }
+                      }}>
                         <SheetTrigger asChild>
                           <button
                             className='text-blue-600 hover:underline'
@@ -191,17 +210,29 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
 }
 
 type ImportRecipeDialogProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  recipe: ImportedRecipe | null
+  setRecipe: (recipe: ImportedRecipe | null) => void
+  isManualMode: boolean
+  setIsManualMode: (isManual: boolean) => void
   onImport: () => void
   setProcessingRecipeId: (id: number | null) => void
 }
 
-function ImportRecipeDialog({ onImport, setProcessingRecipeId }: ImportRecipeDialogProps) {
-  const [open, setOpen] = useState(false)
+function ImportRecipeDialog({
+  open,
+  onOpenChange,
+  recipe,
+  setRecipe,
+  isManualMode,
+  setIsManualMode,
+  onImport,
+  setProcessingRecipeId,
+}: ImportRecipeDialogProps) {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [recipe, setRecipe] = useState<ImportedRecipe | null>(null)
-  const [isManualMode, setIsManualMode] = useState(false)
 
   function handleReset() {
     setIsManualMode(false)
@@ -247,7 +278,7 @@ function ImportRecipeDialog({ onImport, setProcessingRecipeId }: ImportRecipeDia
       })
       if (!saveRes.ok) throw new Error('Failed to save recipe')
       const { recipe: savedRecipe } = await saveRes.json()
-      setOpen(false)
+      onOpenChange(false)
       onImport()
       setProcessingRecipeId(savedRecipe.id)
       // 2. Process ingredients in background
@@ -284,11 +315,9 @@ function ImportRecipeDialog({ onImport, setProcessingRecipeId }: ImportRecipeDia
   }
 
   return (
-    <Dialog open={open} onOpenChange={(newOpen) => {
-      setOpen(newOpen)
-    }}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="ml-2">Add new</Button>
+        <Button>Import from URL</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
