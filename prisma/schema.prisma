@@ -12,6 +12,7 @@ model Recipe {
   title       String
   summary     String
   instructions String
+  rawIngredients String // Store original ingredients list as JSON string
   ingredients  Ingredient[] @relation("RecipeIngredients")
   startSeason  Int      // 1 to 12 (January to December)
   endSeason    Int      // 1 to 12 (January to December)

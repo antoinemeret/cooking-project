@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Table,
   TableBody,
@@ -9,68 +9,55 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { columns, Recipe } from "./columns"
+import {
+  useReactTable,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getFilteredRowModel,
+  flexRender,
+} from "@tanstack/react-table"
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { getMonthName } from "@/lib/utils"
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
 
-type Recipe = {
-  id: number
+type ImportedRecipe = {
   title: string
-  summary: string
+  rawIngredients: string[]
   instructions: string
-  startSeason: number
-  endSeason: number
-  grade: number
-  time: number
-  createdAt: Date
-  updatedAt: Date
-  ingredients: { name: string; startSeason: number; endSeason: number }[]
 }
 
-export function DataTable({ recipes }: { recipes: Recipe[] }) {
-  const [sortField, setSortField] = useState<keyof Recipe>("title")
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc")
+export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], onRefresh: () => void, loading: boolean }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 5
+  const itemsPerPage = 50
+  const [open, setOpen] = useState(false)
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null)
+  const [recipe, setRecipe] = useState<ImportedRecipe | null>(null)
+  const [processingRecipeId, setProcessingRecipeId] = useState<number | null>(null)
 
-  // Filter recipes based on search term
-  const filteredRecipes = recipes.filter((recipe) =>
-    recipe.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    recipe.summary.toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
-  // Sort recipes
-  const sortedRecipes = [...filteredRecipes].sort((a, b) => {
-    if (sortDirection === "asc") {
-      return a[sortField] > b[sortField] ? 1 : -1
-    } else {
-      return a[sortField] < b[sortField] ? 1 : -1
-    }
+  const table = useReactTable({
+    data: recipes,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    state: {
+      globalFilter: searchTerm,
+      pagination: {
+        pageSize: 50,
+        pageIndex: 0,
+      },
+    },
+    onGlobalFilterChange: setSearchTerm,
   })
-
-  // Paginate recipes
-  const totalPages = Math.ceil(sortedRecipes.length / itemsPerPage)
-  const paginatedRecipes = sortedRecipes.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  )
-
-  // Handle sort
-  const handleSort = (field: keyof Recipe) => {
-    if (field === sortField) {
-      setSortDirection(sortDirection === "asc" ? "desc" : "asc")
-    } else {
-      setSortField(field)
-      setSortDirection("asc")
-    }
-  }
 
   return (
     <div>
@@ -81,59 +68,99 @@ export function DataTable({ recipes }: { recipes: Recipe[] }) {
           onChange={(e) => setSearchTerm(e.target.value)}
           className="max-w-sm"
         />
+        <div className="flex gap-2">
+          <ImportRecipeDialog onImport={onRefresh} setProcessingRecipeId={setProcessingRecipeId} />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="ml-2">
+                Columns
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {table
+                .getAllLeafColumns()
+                .filter((column) => column.getCanHide())
+                .map((column) => (
+                  <DropdownMenuCheckboxItem
+                    key={column.id}
+                    className="capitalize"
+                    checked={column.getIsVisible()}
+                    onCheckedChange={() => column.toggleVisibility()}
+                  >
+                    {column.id}
+                  </DropdownMenuCheckboxItem>
+                ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
       <Table>
         <TableHeader>
-          <TableRow>
-            <TableHead>
-              <Button
-                variant="ghost"
-                onClick={() => handleSort("title")}
-              >
-                Title {sortField === "title" && (sortDirection === "asc" ? "↑" : "↓")}
-              </Button>
-            </TableHead>
-            <TableHead>Summary</TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                onClick={() => handleSort("startSeason")}
-              >
-                Season {sortField === "startSeason" && (sortDirection === "asc" ? "↑" : "↓")}
-              </Button>
-            </TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                onClick={() => handleSort("grade")}
-              >
-                Grade {sortField === "grade" && (sortDirection === "asc" ? "↑" : "↓")}
-              </Button>
-            </TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                onClick={() => handleSort("time")}
-              >
-                Time {sortField === "time" && (sortDirection === "asc" ? "↑" : "↓")}
-              </Button>
-            </TableHead>
-            <TableHead>Ingredients</TableHead>
-          </TableRow>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <TableRow key={headerGroup.id}>
+              {headerGroup.headers.map((header) => (
+                <TableHead key={header.id}>
+                  {flexRender(header.column.columnDef.header, header.getContext())}
+                </TableHead>
+              ))}
+            </TableRow>
+          ))}
         </TableHeader>
         <TableBody>
-          {paginatedRecipes.map((recipe) => (
-            <TableRow key={recipe.id}>
-              <TableCell>{recipe.title}</TableCell>
-              <TableCell>{recipe.summary}</TableCell>
-              <TableCell>
-                {getMonthName(recipe.startSeason)} to {getMonthName(recipe.endSeason)}
-              </TableCell>
-              <TableCell>{recipe.grade}</TableCell>
-              <TableCell>{recipe.time}</TableCell>
-              <TableCell>
-                {recipe.ingredients.map((ing) => ing.name).join(', ')}
-              </TableCell>
+          {table.getRowModel().rows.map((row) => (
+            <TableRow key={row.id}>
+              {row.getVisibleCells().map((cell) => {
+                if (cell.column.id === 'title') {
+                  return (
+                    <TableCell key={cell.id}>
+                      <Sheet open={open} onOpenChange={setOpen}>
+                        <SheetTrigger asChild>
+                          <button
+                            className='text-blue-600 hover:underline'
+                            onClick={() => setSelectedRecipe(row.original)}
+                          >
+                            {row.original.title}
+                          </button>
+                        </SheetTrigger>
+                        <SheetContent className="w-[50%] min-w-[320px] p-6 flex flex-col gap-6">
+                            <SheetHeader>
+                                 <SheetTitle className="text-2xl font-bold">{selectedRecipe?.title}</SheetTitle>
+                             </SheetHeader>
+                            <div className="flex flex-col gap-4">
+                             <div>
+                                 <h2 className="text-lg font-semibold mb-2">Ingredients</h2>
+                                 <ul className="list-disc list-inside pl-4 space-y-1">
+                                    {selectedRecipe?.rawIngredients && JSON.parse(selectedRecipe.rawIngredients).map((ingredient: string) => (
+                                    <li key={ingredient}>{ingredient}</li>))}
+                                </ul>
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-semibold mb-2">Instructions</h2>
+                                <p className="whitespace-pre-line">{selectedRecipe?.instructions}</p>
+                            </div>
+                        </div>
+                    </SheetContent>
+                      </Sheet>
+                    </TableCell>
+                  )
+                }
+                // Show loader in the first cell if this row is being processed
+                if (row.original.id === processingRecipeId && cell.column.id === 'title') {
+                  return (
+                    <TableCell key={cell.id}>
+                      <div className="flex items-center gap-2">
+                        <span>{row.original.title}</span>
+                        <span className="ml-2 animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-500" />
+                      </div>
+                    </TableCell>
+                  )
+                }
+                return (
+                  <TableCell key={cell.id}>
+                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                  </TableCell>
+                )
+              })}
             </TableRow>
           ))}
         </TableBody>
@@ -141,22 +168,180 @@ export function DataTable({ recipes }: { recipes: Recipe[] }) {
       <div className="flex items-center justify-between mt-4">
         <Button
           variant="outline"
-          onClick={() => setCurrentPage(currentPage - 1)}
-          disabled={currentPage === 1}
+          onClick={() => table.previousPage()}
+          disabled={!table.getCanPreviousPage()}
         >
           Previous
         </Button>
         <span>
-          Page {currentPage} of {totalPages}
+          Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
         </span>
         <Button
           variant="outline"
-          onClick={() => setCurrentPage(currentPage + 1)}
-          disabled={currentPage === totalPages}
+          onClick={() => table.nextPage()}
+          disabled={!table.getCanNextPage()}
         >
           Next
         </Button>
       </div>
     </div>
+  )
+}
+
+type ImportRecipeDialogProps = {
+  onImport: () => void
+  setProcessingRecipeId: (id: number | null) => void
+}
+
+function ImportRecipeDialog({ onImport, setProcessingRecipeId }: ImportRecipeDialogProps) {
+  const [open, setOpen] = useState(false)
+  const [url, setUrl] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [recipe, setRecipe] = useState<ImportedRecipe | null>(null)
+  const [isManualMode, setIsManualMode] = useState(false)
+
+  function handleReset() {
+    setIsManualMode(false)
+    setRecipe(null)
+    setUrl('')
+    setError('')
+  }
+
+  // Reset state when dialog opens
+  useEffect(() => {
+    if (open) {
+      handleReset()
+    }
+  }, [open])
+
+  async function handleImport() {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/scrape', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      })
+      if (!res.ok) throw new Error('Failed to fetch or parse')
+      const data = await res.json()
+      setRecipe(data.recipe as ImportedRecipe)
+    } catch (err) {
+      setError('Could not import recipe.')
+    }
+    setLoading(false)
+  }
+
+  async function handleValidate() {
+    setLoading(true)
+    setError('')
+    try {
+      // 1. Save the recipe
+      const saveRes = await fetch('/api/recipes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(recipe)
+      })
+      if (!saveRes.ok) throw new Error('Failed to save recipe')
+      const { recipe: savedRecipe } = await saveRes.json()
+      setOpen(false)
+      onImport()
+      setProcessingRecipeId(savedRecipe.id)
+      // 2. Process ingredients in background
+      const processRes = await fetch('/api/recipes/process-ingredients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipeId: savedRecipe.id })
+      })
+      if (processRes.ok) onImport()
+      // 3. Generate summary in background
+      const summaryRes = await fetch('/api/recipes/generate-summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipeId: savedRecipe.id })
+      })
+      if (summaryRes.ok) onImport()
+      setProcessingRecipeId(null)
+    } catch (err) {
+      setError('Error saving, processing, or summarizing recipe')
+      console.error('Validation error:', err)
+      setProcessingRecipeId(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  function handleManualMode() {
+    setIsManualMode(true)
+    setRecipe({
+      title: '',
+      rawIngredients: [],
+      instructions: ''
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(newOpen) => {
+      setOpen(newOpen)
+    }}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="ml-2">Add new</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Import Recipe from URL</DialogTitle>
+        </DialogHeader>
+        {!recipe ? (
+          <>
+            <Input
+              placeholder="Paste recipe URL"
+              value={url}
+              onChange={e => setUrl(e.target.value)}
+              disabled={loading}
+            />
+            <div className="flex flex-col gap-2">
+              <Button onClick={handleImport} disabled={loading || !url}>
+                {loading ? 'Importing...' : 'Import'}
+              </Button>
+              <div className="text-center text-sm text-gray-500">
+                Or <button onClick={handleManualMode} className="text-blue-600 hover:underline">import manually</button>
+              </div>
+            </div>
+            {error && <div className="text-red-500">{error}</div>}
+          </>
+        ) : (
+          <>
+            {/* Editable fields for recipe */}
+            <Input
+              value={recipe?.title ?? ''}
+              onChange={e => setRecipe({ ...recipe, title: e.target.value })}
+              className="mb-2"
+              placeholder="Recipe title"
+            />
+            <textarea
+              value={Array.isArray(recipe?.rawIngredients) ? recipe.rawIngredients.join('\n') : ''}
+              onChange={e => setRecipe({ ...recipe, rawIngredients: e.target.value.split('\n') })}
+              className="mb-2 w-full border rounded p-2"
+              rows={5}
+              placeholder="Enter ingredients (one per line)"
+            />
+            <textarea
+              value={recipe?.instructions ?? ''}
+              onChange={e => setRecipe({ ...recipe, instructions: e.target.value })}
+              className="mb-2 w-full border rounded p-2"
+              rows={5}
+              placeholder="Enter recipe instructions"
+            />
+            <DialogFooter>
+              <Button onClick={handleValidate} disabled={loading || !recipe.title}>
+                {loading ? 'Processing...' : 'Save'}
+              </Button>
+              {error && <div className="text-red-500 ml-4 self-center">{error}</div>}
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
