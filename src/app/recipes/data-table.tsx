@@ -78,7 +78,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
         body: JSON.stringify({ url: importUrl }),
       })
       if (res.ok) {
-        const newRecipe = await res.json()
+        const { recipe: newRecipe } = await res.json()
         openReviewDialog(newRecipe)
       } else {
         setImportError("Could not import recipe from URL.")
@@ -183,18 +183,6 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
           className="max-w-sm"
         />
         <div className="flex gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger>Open</DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Profile</DropdownMenuItem>
-              <DropdownMenuItem>Billing</DropdownMenuItem>
-              <DropdownMenuItem>Team</DropdownMenuItem>
-              <DropdownMenuItem>Subscription</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
           <ImportRecipeDialog
             open={isImportDialogOpen}
             onOpenChange={setIsImportDialogOpen}
@@ -294,38 +282,12 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                 if (cell.column.id === 'title') {
                   return (
                     <TableCell key={cell.id}>
-                      <Sheet open={selectedRecipe !== null} onOpenChange={(newOpen) => {
-                        if (!newOpen) {
-                          setSelectedRecipe(null)
-                        }
-                      }}>
-                        <SheetTrigger asChild>
-                          <button
-                            className='text-blue-600 hover:underline'
-                            onClick={() => setSelectedRecipe(row.original)}
-                          >
-                            {row.original.title}
-                          </button>
-                        </SheetTrigger>
-                        <SheetContent className="w-[50%] min-w-[320px] p-6 flex flex-col gap-6">
-                            <SheetHeader>
-                                 <SheetTitle className="text-2xl font-bold">{selectedRecipe?.title}</SheetTitle>
-                             </SheetHeader>
-                            <div className="flex flex-col gap-4">
-                             <div>
-                                 <h2 className="text-lg font-semibold mb-2">Ingredients</h2>
-                                 <ul className="list-disc list-inside pl-4 space-y-1">
-                                    {selectedRecipe?.rawIngredients && JSON.parse(selectedRecipe.rawIngredients).map((ingredient: string) => (
-                                    <li key={ingredient}>{ingredient}</li>))}
-                                </ul>
-                            </div>
-                            <div>
-                                <h2 className="text-lg font-semibold mb-2">Instructions</h2>
-                                <p className="whitespace-pre-line">{selectedRecipe?.instructions}</p>
-                            </div>
-                        </div>
-                    </SheetContent>
-                      </Sheet>
+                      <button
+                        className='text-blue-600 hover:underline'
+                        onClick={() => setSelectedRecipe(row.original)}
+                      >
+                        {row.original.title}
+                      </button>
                     </TableCell>
                   )
                 }
@@ -369,6 +331,32 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
           Next
         </Button>
       </div>
+      {/* Render a single Sheet for the selected recipe */}
+      {selectedRecipe && (
+        <Sheet open={selectedRecipe !== null} onOpenChange={(open) => {
+          if (!open) setSelectedRecipe(null)
+        }}>
+          <SheetContent className="w-[50%] min-w-[320px] p-6 flex flex-col gap-6">
+            <SheetHeader>
+              <SheetTitle className="text-2xl font-bold">{selectedRecipe?.title}</SheetTitle>
+            </SheetHeader>
+            <div className="flex flex-col gap-4">
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Ingredients</h2>
+                <ul className="list-disc list-inside pl-4 space-y-1">
+                  {selectedRecipe?.rawIngredients && JSON.parse(selectedRecipe.rawIngredients).map((ingredient: string) => (
+                    <li key={ingredient}>{ingredient}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Instructions</h2>
+                <p className="whitespace-pre-line">{selectedRecipe?.instructions}</p>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
     </div>
   )
 }
