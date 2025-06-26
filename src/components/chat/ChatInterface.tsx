@@ -268,10 +268,10 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   return (
     <div className={cn("flex flex-col h-full", className)}>
       {/* Chat Header */}
-      <div className="flex items-center justify-between p-4 border-b bg-background">
-        <div>
-          <h1 className="text-lg font-semibold">Recipe Assistant</h1>
-          <p className="text-sm text-muted-foreground">
+      <div className="flex items-center justify-between p-3 sm:p-4 md:p-6 border-b bg-background">
+        <div className="min-w-0 flex-1 mr-3">
+          <h1 className="text-base sm:text-lg md:text-xl font-semibold truncate">Recipe Assistant</h1>
+          <p className="text-xs sm:text-sm md:text-base text-muted-foreground hidden sm:block">
             Let me help you plan your meals! 🍳
           </p>
         </div>
@@ -280,13 +280,14 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
           size="icon"
           onClick={resetConversation}
           disabled={session.isTyping}
+          className="shrink-0 md:h-12 md:w-12"
         >
-          <RefreshCw className="h-4 w-4" />
+          <RefreshCw className="h-4 w-4 md:h-5 md:w-5" />
         </Button>
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4 md:space-y-6">
         {/* Messages */}
         {session.messages.map((message, index) => (
           <MessageBubble key={index} message={message} />
@@ -332,9 +333,9 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
       {/* Conversation Starters */}
       {session.messages.length === 1 && (
-        <div className="p-4 border-t bg-muted/30">
-          <p className="text-xs text-muted-foreground mb-2">Try asking:</p>
-          <div className="flex flex-wrap gap-2">
+        <div className="p-3 sm:p-4 md:p-6 border-t bg-muted/30">
+          <p className="text-xs sm:text-sm md:text-base text-muted-foreground mb-2 md:mb-3">Try asking:</p>
+          <div className="flex flex-wrap gap-1.5 sm:gap-2 md:gap-3">
             {[
               "I need 3 quick dinners for this week",
               "What vegetarian meals can I make?",
@@ -345,7 +346,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
                 key={index}
                 variant="outline"
                 size="sm"
-                className="text-xs h-8"
+                className="text-xs sm:text-sm md:text-base h-8 md:h-10 px-2 sm:px-3 md:px-4"
                 onClick={() => sendMessage(starter)}
                 disabled={session.isTyping}
               >

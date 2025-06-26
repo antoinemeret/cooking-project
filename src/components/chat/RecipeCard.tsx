@@ -74,13 +74,13 @@ export function RecipeCard({
 
   return (
     <div className={cn(
-      "border rounded-lg p-4 bg-card text-card-foreground shadow-sm mb-3",
+      "border rounded-lg p-3 sm:p-4 md:p-6 bg-card text-card-foreground shadow-sm mb-3",
       disabled && "opacity-60",
       className
     )}>
       {/* Recipe Header */}
-      <div className="flex items-start justify-between mb-2">
-        <h3 className="font-semibold text-base leading-tight pr-2">
+      <div className="flex items-start justify-between mb-2 md:mb-3">
+        <h3 className="font-semibold text-base md:text-lg leading-tight pr-2">
           {recipe.title}
         </h3>
         <div className="flex items-center space-x-1 flex-shrink-0">
@@ -90,16 +90,16 @@ export function RecipeCard({
 
       {/* Recipe Summary */}
       {recipe.summary && (
-        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">
+        <p className="text-sm md:text-base text-muted-foreground mb-3 md:mb-4 line-clamp-2 leading-relaxed">
           {recipe.summary}
         </p>
       )}
 
       {/* Recipe Meta */}
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center space-x-4 text-xs text-muted-foreground">
+      <div className="flex items-center justify-between mb-3 md:mb-4">
+        <div className="flex items-center space-x-4 text-xs md:text-sm text-muted-foreground">
           <div className="flex items-center space-x-1">
-            <Clock className="h-3 w-3" />
+            <Clock className="h-3 w-3 md:h-4 md:w-4" />
             <span>{recipe.time} min</span>
           </div>
         </div>
@@ -110,7 +110,7 @@ export function RecipeCard({
             {tags.slice(0, 3).map((tag, index) => (
               <span
                 key={index}
-                className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-secondary text-secondary-foreground"
+                className="inline-flex items-center px-2 md:px-3 py-0.5 md:py-1 rounded-full text-xs md:text-sm bg-secondary text-secondary-foreground"
               >
                 {tag}
               </span>
@@ -126,19 +126,19 @@ export function RecipeCard({
 
       {/* AI Reason */}
       {reason && (
-        <div className="bg-muted/50 rounded-md p-2 mb-3">
-          <p className="text-xs text-muted-foreground italic">
+        <div className="bg-muted/50 rounded-md p-2 md:p-3 mb-3 md:mb-4">
+          <p className="text-xs md:text-sm text-muted-foreground italic">
             💡 {reason}
           </p>
         </div>
       )}
 
       {/* Action Buttons */}
-      <div className="flex space-x-2">
+      <div className="flex space-x-2 md:space-x-3">
         <Button
           onClick={handleAccept}
           disabled={disabled || isProcessing}
-          className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+          className="flex-1 bg-green-600 hover:bg-green-700 text-white md:h-12"
           size="sm"
         >
           {isProcessing ? "Adding..." : "✓ Accept"}
@@ -147,7 +147,7 @@ export function RecipeCard({
           onClick={handleDecline}
           disabled={disabled || isProcessing}
           variant="outline"
-          className="flex-1"
+          className="flex-1 md:h-12"
           size="sm"
         >
           {isProcessing ? "..." : "✗ Skip"}

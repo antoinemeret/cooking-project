@@ -1,88 +1,54 @@
-import Image from "next/image";
 import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
+    <div className="container mx-auto px-3 sm:px-4 md:px-8 py-6 sm:py-8 md:py-12">
+      <div className="flex flex-col items-center justify-center min-h-[50vh] sm:min-h-[60vh] md:min-h-[50vh] text-center">
+        <div className="text-4xl sm:text-6xl md:text-7xl mb-4 sm:mb-6 md:mb-8">🍳</div>
         
-        <div className="text-center sm:text-left">
-          <h1 className="text-3xl font-bold mb-4">Recipe Planning Assistant</h1>
-          <p className="text-lg text-muted-foreground mb-8">
-            Your AI-powered meal planning companion
-          </p>
-        </div>
+        <h1 className="text-2xl sm:text-4xl md:text-5xl font-bold mb-3 sm:mb-4 md:mb-6">Recipe Assistant</h1>
+        <p className="text-base sm:text-xl md:text-2xl text-muted-foreground mb-6 sm:mb-8 md:mb-10 max-w-sm sm:max-w-md md:max-w-2xl px-2">
+          Your AI-powered meal planning companion. Plan meals, get suggestions, and organize your cooking.
+        </p>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <Link
-            href="/assistant"
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-          >
-            💬 Chat with Assistant
-          </Link>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 md:gap-6 w-full max-w-xs sm:max-w-md md:max-w-4xl">
           <Link
             href="/recipes"
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto"
+            className="flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 rounded-lg border border-border hover:bg-muted/50 transition-colors min-h-[80px] sm:min-h-[100px] md:min-h-[120px]"
           >
-            🤌 View Recipes
+            <span className="text-xl sm:text-2xl md:text-3xl mb-1 sm:mb-2 md:mb-3">📖</span>
+            <span className="font-medium text-sm sm:text-base md:text-lg">Recipes</span>
+          </Link>
+          
+          <Link
+            href="/assistant"
+            className="flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 rounded-lg border border-border hover:bg-muted/50 transition-colors min-h-[80px] sm:min-h-[100px] md:min-h-[120px]"
+          >
+            <span className="text-xl sm:text-2xl md:text-3xl mb-1 sm:mb-2 md:mb-3">💬</span>
+            <span className="font-medium text-sm sm:text-base md:text-lg">Assistant</span>
+          </Link>
+          
+          <Link
+            href="/planner"
+            className="flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 rounded-lg border border-border hover:bg-muted/50 transition-colors min-h-[80px] sm:min-h-[100px] md:min-h-[120px]"
+          >
+            <span className="text-xl sm:text-2xl md:text-3xl mb-1 sm:mb-2 md:mb-3">📋</span>
+            <span className="font-medium text-sm sm:text-base md:text-lg">Planner</span>
+          </Link>
+          
+          <Link
+            href="/groceries"
+            className="flex flex-col items-center justify-center p-4 sm:p-6 md:p-8 rounded-lg border border-border hover:bg-muted/50 transition-colors min-h-[80px] sm:min-h-[100px] md:min-h-[120px]"
+          >
+            <span className="text-xl sm:text-2xl md:text-3xl mb-1 sm:mb-2 md:mb-3">🛒</span>
+            <span className="font-medium text-sm sm:text-base md:text-lg">Groceries</span>
           </Link>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        <p className="text-xs sm:text-sm md:text-base text-muted-foreground mt-6 sm:mt-8 md:mt-10 px-4">
+          Start by exploring your recipes or chatting with the AI assistant
+        </p>
+      </div>
     </div>
   );
 }

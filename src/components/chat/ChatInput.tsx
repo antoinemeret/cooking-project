@@ -58,7 +58,7 @@ export function ChatInput({
 
   return (
     <div className={cn(
-      "flex items-end space-x-2 p-4 border-t bg-background",
+      "flex items-end space-x-2 sm:space-x-3 md:space-x-4 p-3 sm:p-4 md:p-6 border-t bg-background",
       className
     )}>
       <div className="flex-1 relative">
@@ -69,13 +69,13 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled || isLoading}
-          className="min-h-[44px] max-h-[120px] resize-none pr-12"
+          className="min-h-[44px] md:min-h-[52px] max-h-[120px] md:max-h-[140px] resize-none pr-12 md:pr-16 text-sm md:text-base"
           rows={1}
         />
         
         {/* Character count for long messages */}
         {message.length > 200 && (
-          <div className="absolute bottom-2 right-2 text-xs text-muted-foreground bg-background px-1">
+          <div className="absolute bottom-2 right-2 text-xs md:text-sm text-muted-foreground bg-background px-1">
             {message.length}/500
           </div>
         )}
@@ -85,12 +85,12 @@ export function ChatInput({
         onClick={handleSend}
         disabled={!message.trim() || disabled || isLoading}
         size="icon"
-        className="h-11 w-11 flex-shrink-0"
+        className="h-11 w-11 md:h-14 md:w-14 flex-shrink-0"
       >
         {isLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 className="h-4 w-4 md:h-5 md:w-5 animate-spin" />
         ) : (
-          <Send className="h-4 w-4" />
+          <Send className="h-4 w-4 md:h-5 md:w-5" />
         )}
       </Button>
     </div>
