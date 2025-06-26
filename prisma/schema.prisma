@@ -20,6 +20,7 @@ model Recipe {
   time        Int      // minutes
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  plannedRecipes PlannedRecipe[]
 }
 
 model Ingredient {
@@ -30,4 +31,36 @@ model Ingredient {
   recipes     Recipe[] @relation("RecipeIngredients")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model MealPlan {
+  id        Int      @id @default(autoincrement())
+  userId    String   // User identifier for the meal plan
+  status    String   @default("active") // active, completed, archived
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  plannedRecipes PlannedRecipe[]
+  groceryList    GroceryList?
+}
+
+model PlannedRecipe {
+  id         Int      @id @default(autoincrement())
+  mealPlanId Int
+  recipeId   Int
+  completed  Boolean  @default(false)
+  addedAt    DateTime @default(now())
+  
+  mealPlan   MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
+  recipe     Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+}
+
+model GroceryList {
+  id           Int      @id @default(autoincrement())
+  mealPlanId   Int      @unique
+  ingredients  String   // JSON string of aggregated ingredients
+  checkedItems String   // JSON string of checked item IDs/names
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  mealPlan     MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
 }

@@ -26,6 +26,11 @@ async function main() {
       title: 'Tomato Basil Pasta',
       summary: 'A simple pasta dish with fresh tomatoes and basil.',
       instructions: 'Cook pasta. Mix with chopped tomatoes and basil.',
+      rawIngredients: JSON.stringify([
+        { name: 'Pasta', quantity: '200g' },
+        { name: 'Tomatoes', quantity: '3 medium' },
+        { name: 'Fresh basil', quantity: '10 leaves' }
+      ]),
       startSeason: 6, // June
       endSeason: 9,   // September
       grade: 3,
