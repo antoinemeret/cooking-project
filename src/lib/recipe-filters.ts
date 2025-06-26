@@ -45,22 +45,35 @@ export function filterRecipesBySeason<T extends Pick<Recipe, 'startSeason' | 'en
 }
 
 /**
- * Filter recipes by tags (case-insensitive partial matching)
+ * Filter recipes by tags (exact and partial matching)
  */
-export function filterRecipesByTags<T extends Pick<Recipe, 'title' | 'summary'>>(
+export function filterRecipesByTags<T extends Pick<Recipe, 'tags'>>(
   recipes: T[], 
   requiredTags: string[]
 ): T[] {
   if (requiredTags.length === 0) return recipes
   
   return recipes.filter(recipe => {
-    // For now, we'll check against title and summary since tags field doesn't exist yet
-    // This will be updated when we add the tags field to the Recipe model
-    const searchText = `${recipe.title} ${recipe.summary}`.toLowerCase()
+    let recipeTags: string[] = []
     
-    return requiredTags.some(tag => 
-      searchText.includes(tag.toLowerCase())
-    )
+    try {
+      recipeTags = JSON.parse(recipe.tags)
+    } catch {
+      return false // Skip recipes with invalid tags JSON
+    }
+    
+    if (!Array.isArray(recipeTags)) return false
+    
+    // Convert both recipe tags and required tags to lowercase for comparison
+    const recipeTagsLower = recipeTags.map(tag => tag.toLowerCase())
+    
+    // Check if any required tag matches (exact or partial)
+    return requiredTags.some(requiredTag => {
+      const requiredTagLower = requiredTag.toLowerCase()
+      return recipeTagsLower.some(recipeTag => 
+        recipeTag.includes(requiredTagLower) || requiredTagLower.includes(recipeTag)
+      )
+    })
   })
 }
 
