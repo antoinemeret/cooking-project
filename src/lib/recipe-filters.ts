@@ -278,4 +278,35 @@ export function getSeasonDescription(recipe: Pick<Recipe, 'startSeason' | 'endSe
   
   // Spans year boundary
   return `${getMonthName(startSeason)} - ${getMonthName(endSeason)} (across winter)`
+}
+
+/**
+ * Enhanced filtering with cooking time and rating constraints
+ */
+export function filterRecipesAdvanced(
+  recipes: RecipeWithIngredients[],
+  filters: {
+    seasonality?: boolean
+    tags?: string[]
+    requiredIngredients?: string[]
+    excludedIngredients?: string[]
+    maxCookingTime?: number
+    minRating?: number
+    currentMonth?: number
+  } = {}
+): RecipeWithIngredients[] {
+  // First apply basic filtering
+  let filteredRecipes = filterRecipes(recipes, filters)
+  
+  // Apply cooking time filter
+  if (filters.maxCookingTime) {
+    filteredRecipes = filteredRecipes.filter(recipe => recipe.time <= filters.maxCookingTime!)
+  }
+  
+  // Apply rating filter
+  if (filters.minRating) {
+    filteredRecipes = filteredRecipes.filter(recipe => recipe.grade >= filters.minRating!)
+  }
+  
+  return filteredRecipes
 } 

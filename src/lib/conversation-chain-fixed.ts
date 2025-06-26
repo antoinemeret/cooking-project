@@ -195,9 +195,9 @@ export class MealPlanningConversationChain {
   }
 
   /**
-   * Decline a recipe suggestion and get new alternatives
+   * Decline a recipe suggestion
    */
-  async declineRecipe(sessionId: string, recipeId: number, reason?: string): Promise<{ response: string; suggestedRecipes?: RecipeRecommendation[] }> {
+  async declineRecipe(sessionId: string, recipeId: number, reason?: string): Promise<string> {
     const session = globalSessionStore.getSession(sessionId)
     if (!session) {
       throw new Error('Session not found')
@@ -215,46 +215,15 @@ export class MealPlanningConversationChain {
 
     if (reason) {
       responseMessage += ` Thanks for letting me know ${reason}.`
-      
-      // Update criteria based on decline reason
-      if (reason.toLowerCase().includes('too long') || reason.toLowerCase().includes('takes too much time')) {
-        session.currentCriteria.maxCookingTime = Math.min(session.currentCriteria.maxCookingTime || 60, recipe?.time || 60)
-      }
     }
 
-    // Get alternative recipes after declining
-    const availableRecipes = await this.getFilteredRecipes(session)
-    const alternativeRecipes = availableRecipes.slice(0, 2) // Get top 2 alternatives
+    responseMessage += ` Let me suggest something else that might work better for you.`
 
-    if (alternativeRecipes.length > 0) {
-      responseMessage += ` Here are some alternatives that might work better:`
-      
-      // Create recipe recommendations
-      const suggestedRecipes: RecipeRecommendation[] = alternativeRecipes.map(altRecipe => ({
-        recipe: altRecipe,
-        reason: reason ? `Alternative to ${recipe?.title} (${reason})` : `Alternative to ${recipe?.title}`,
-        confidence: 0.8
-      }))
+    this.addMessage(sessionId, 'assistant', responseMessage)
+    session.updatedAt = new Date()
+    globalSessionStore.setSession(sessionId, session) // Update the session
 
-      this.addMessage(sessionId, 'assistant', responseMessage)
-      session.updatedAt = new Date()
-      globalSessionStore.setSession(sessionId, session) // Update the session
-
-      return {
-        response: responseMessage,
-        suggestedRecipes
-      }
-    } else {
-      responseMessage += ` I don't have any other recipes that match your current preferences. Would you like to try a different type of cuisine or cooking style?`
-      
-      this.addMessage(sessionId, 'assistant', responseMessage)
-      session.updatedAt = new Date()
-      globalSessionStore.setSession(sessionId, session) // Update the session
-
-      return {
-        response: responseMessage
-      }
-    }
+    return responseMessage
   }
 
   /**

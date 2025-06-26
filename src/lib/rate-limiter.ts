@@ -102,6 +102,16 @@ class RateLimiter {
   }
 }
 
+// Testing exceptions - users/IPs that get higher limits
+const TESTING_EXCEPTIONS = {
+  users: ['user123', 'test-user', 'antoine'], // Add your test user IDs here
+  ips: ['127.0.0.1', '::1', 'localhost'], // Local development IPs
+  limits: {
+    maxRequests: 100, // 100 requests per hour for testing
+    windowMs: 60 * 60 * 1000 // 1 hour
+  }
+}
+
 // Rate limiter configurations
 const AI_API_RATE_LIMITS = {
   // Per user limits
@@ -123,13 +133,28 @@ const AI_API_RATE_LIMITS = {
     maxRequests: 10, // 10 requests per hour per IP
     windowMs: 60 * 60 * 1000, // 1 hour
     keyGenerator: (ip: string) => `ip:${ip}`
-  }
+  },
+  
+  // Testing limits (for whitelisted users/IPs)
+  testing: TESTING_EXCEPTIONS.limits
 }
 
 // Create rate limiter instances
 export const userRateLimiter = new RateLimiter(AI_API_RATE_LIMITS.user)
 export const globalRateLimiter = new RateLimiter(AI_API_RATE_LIMITS.global)
 export const ipRateLimiter = new RateLimiter(AI_API_RATE_LIMITS.ip)
+export const testingRateLimiter = new RateLimiter(AI_API_RATE_LIMITS.testing)
+
+/**
+ * Check if a user/IP is in the testing exception list
+ */
+function isTestingException(identifier: string, type: 'user' | 'ip'): boolean {
+  if (type === 'user') {
+    return TESTING_EXCEPTIONS.users.includes(identifier)
+  } else {
+    return TESTING_EXCEPTIONS.ips.includes(identifier)
+  }
+}
 
 /**
  * Check if an AI API request is allowed
@@ -138,18 +163,34 @@ export async function checkAIApiRateLimit(
   identifier: string,
   type: 'user' | 'ip' = 'user'
 ): Promise<{ allowed: boolean; error?: string; resetTime?: number; remaining?: number }> {
-  // Check global rate limit first
-  const globalCheck = await globalRateLimiter.isAllowed('global')
-  if (!globalCheck.allowed) {
-    return {
-      allowed: false,
-      error: 'Global rate limit exceeded. Please try again later.',
-      resetTime: globalCheck.resetTime
+  // Check if this is a testing exception
+  const isTesting = isTestingException(identifier, type)
+  
+  // Check global rate limit first (skip for testing exceptions)
+  if (!isTesting) {
+    const globalCheck = await globalRateLimiter.isAllowed('global')
+    if (!globalCheck.allowed) {
+      return {
+        allowed: false,
+        error: 'Global rate limit exceeded. Please try again later.',
+        resetTime: globalCheck.resetTime
+      }
     }
   }
 
-  // Check user/IP specific rate limit
-  const limiter = type === 'user' ? userRateLimiter : ipRateLimiter
+  // Choose the appropriate rate limiter
+  let limiter: RateLimiter
+  let maxRequests: number
+  
+  if (isTesting) {
+    limiter = testingRateLimiter
+    maxRequests = AI_API_RATE_LIMITS.testing.maxRequests
+    console.log(`[TESTING] Using elevated rate limits for ${type}: ${identifier} (${maxRequests} requests/hour)`)
+  } else {
+    limiter = type === 'user' ? userRateLimiter : ipRateLimiter
+    maxRequests = AI_API_RATE_LIMITS[type].maxRequests
+  }
+  
   const userCheck = await limiter.isAllowed(identifier)
   
   if (!userCheck.allowed) {
@@ -161,6 +202,17 @@ export async function checkAIApiRateLimit(
     }
   }
 
+  // For testing exceptions, only return user limits (no global limit consideration)
+  if (isTesting) {
+    return {
+      allowed: true,
+      remaining: userCheck.remaining,
+      resetTime: userCheck.resetTime
+    }
+  }
+
+  // For regular users, consider both global and user limits
+  const globalCheck = await globalRateLimiter.isAllowed('global')
   return {
     allowed: true,
     remaining: Math.min(globalCheck.remaining || 0, userCheck.remaining || 0),
@@ -175,28 +227,50 @@ export function getRateLimitHeaders(
   identifier: string,
   type: 'user' | 'ip' = 'user'
 ): Record<string, string> {
-  const limiter = type === 'user' ? userRateLimiter : ipRateLimiter
+  const isTesting = isTestingException(identifier, type)
+  
+  let limiter: RateLimiter
+  let maxRequests: number
+  
+  if (isTesting) {
+    limiter = testingRateLimiter
+    maxRequests = AI_API_RATE_LIMITS.testing.maxRequests
+  } else {
+    limiter = type === 'user' ? userRateLimiter : ipRateLimiter
+    maxRequests = AI_API_RATE_LIMITS[type].maxRequests
+  }
+  
   const usage = limiter.getUsage(identifier)
-  const globalUsage = globalRateLimiter.getUsage('global')
+  const globalUsage = isTesting ? null : globalRateLimiter.getUsage('global')
   
   if (!usage && !globalUsage) {
     return {}
   }
   
-  const remaining = Math.min(
-    usage?.remaining || AI_API_RATE_LIMITS[type].maxRequests,
-    globalUsage?.remaining || AI_API_RATE_LIMITS.global.maxRequests
-  )
+  let remaining: number
+  let resetTime: number
   
-  const resetTime = Math.max(
-    usage?.resetTime || 0,
-    globalUsage?.resetTime || 0
-  )
+  if (isTesting) {
+    // For testing, only consider user limits
+    remaining = usage?.remaining || maxRequests
+    resetTime = usage?.resetTime || 0
+  } else {
+    // For regular users, consider both user and global limits
+    remaining = Math.min(
+      usage?.remaining || maxRequests,
+      globalUsage?.remaining || AI_API_RATE_LIMITS.global.maxRequests
+    )
+    resetTime = Math.max(
+      usage?.resetTime || 0,
+      globalUsage?.resetTime || 0
+    )
+  }
   
   return {
-    'X-RateLimit-Limit': AI_API_RATE_LIMITS[type].maxRequests.toString(),
+    'X-RateLimit-Limit': maxRequests.toString(),
     'X-RateLimit-Remaining': remaining.toString(),
-    'X-RateLimit-Reset': Math.ceil(resetTime / 1000).toString()
+    'X-RateLimit-Reset': Math.ceil(resetTime / 1000).toString(),
+    ...(isTesting ? { 'X-RateLimit-Testing': 'true' } : {})
   }
 }
 
