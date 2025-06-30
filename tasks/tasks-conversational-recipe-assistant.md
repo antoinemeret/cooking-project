@@ -95,40 +95,34 @@ Implementation of AI-powered conversational meal planning assistant with Claude 
 - [x] Implement proper safe area handling for mobile devices
 - [x] Add pull-to-refresh functionality where appropriate
 
-#### 4.3 Accessibility Improvements
-- [ ] Add proper ARIA labels for navigation
-- [ ] Implement high-contrast color scheme
-- [ ] Ensure keyboard navigation support
-- [ ] Add screen reader support for chat interface
-
-### 📅 **Task 5: Planner Page** (Week 5-6)
+### 📅 **Task 5: Planner Page** (Week 5-6) ✅
 **Priority: High** | **Dependencies: Task 2, Task 4**
 
 #### 5.1 Planner Interface
-- [ ] Create `/planner` page with meal plan overview
-- [ ] Display accepted recipes in organized list format
-- [ ] Add checkboxes for marking meals as completed
-- [ ] Implement recipe removal from current plan
+- [x] Create `/planner` page with meal plan overview
+- [x] Display accepted recipes in organized list format (using card-based layout instead of data table) 
+- [x] Add checkboxes for marking meals as completed
+- [x] Implement recipe removal from current plan
 
 #### 5.2 Meal Plan State Management
-- [ ] Create API endpoints for meal plan CRUD operations
-- [ ] Implement optimistic updates for checkbox interactions
-- [ ] Add persistence for completed meal status
-- [ ] Handle empty states when no meals are planned
+- [x] Create API endpoints for meal plan CRUD operations
+- [x] Implement optimistic updates for checkbox interactions
+- [x] Add persistence for completed meal status
+- [x] Handle empty states when no meals are planned
 
 #### 5.3 Recipe Integration
-- [ ] Enable tapping recipes to view full details using existing sheet behavior
-- [ ] Reuse current Recipes page sheet opener functionality
-- [ ] Add serving information display
-- [ ] Implement quick actions (mark complete, remove from plan)
+- [x] Enable tapping recipes to view full details using existing sheet behavior
+- [x] Reuse current Recipes page sheet opener functionality
+- [x] Add serving information display
+- [x] Implement quick actions (mark complete, remove from plan)
 
 ### 🛒 **Task 6: Grocery List Page** (Week 6-7)
 **Priority: High** | **Dependencies: Task 5**
 
-#### 6.1 Grocery List Generation
-- [ ] Create algorithm to aggregate ingredients from planned recipes
-- [ ] Implement duplicate ingredient detection and quantity merging
-- [ ] Handle unit conversion and standardization
+#### 6.1 Grocery List Generation ✅
+- [x] Create algorithm to aggregate ingredients from planned recipes
+- [x] Implement duplicate ingredient detection and quantity merging
+- [x] Handle unit conversion and standardization
 
 #### 6.2 Grocery Interface
 - [ ] Create `/groceries` page with simple ingredient list
@@ -245,6 +239,12 @@ Implementation of AI-powered conversational meal planning assistant with Claude 
 - [ ] Interface feels intuitive and conversational
 
 ## Future Enhancements (Post-MVP)
+
+###.2 Accessibility Improvements
+- [ ] Add proper ARIA labels for navigation
+- [ ] Implement high-contrast color scheme
+- [ ] Ensure keyboard navigation support
+- [ ] Add screen reader support for chat interface
 
 ### Phase 2 Features
 - Voice input integration
