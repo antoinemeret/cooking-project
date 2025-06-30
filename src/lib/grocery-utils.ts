@@ -26,15 +26,15 @@ export function parseIngredient(ingredientText: string): ParsedIngredient {
     /^(\d+(?:\.\d+)?)\s+(c\.\s*à\s*s\.|cuil\.\s*à\s*soupe|c\.à\.s\.|cas)\s+(?:de?\s+|d')?(.+)$/i,
     // "1 c. à c. de sel", "2 cuil. à café de vanille"  
     /^(\d+(?:\.\d+)?)\s+(c\.\s*à\s*c\.|cuil\.\s*à\s*café|c\.à\.c\.|cac)\s+(?:de?\s+|d')?(.+)$/i,
-    // "2 cups flour", "1.5 tbsp olive oil"
-    /^(\d+(?:\.\d+)?)\s+([a-zA-Z.àé]+(?:\s+à\s+[a-zA-Z]+)?)\s+(?:de?\s+|d')?(.+)$/,
-    // "2 large eggs", "1 medium onion"
-    /^(\d+(?:\.\d+)?)\s+(large|medium|small|whole|gros|grosse|moyen|moyenne|petit|petite)\s+(.+)$/,
     // "500g flour", "2kg chicken", "500 grammes de"
     /^(\d+(?:\.\d+)?)([a-zA-Z]+)\s+(?:de?\s+|d')?(.+)$/,
+    // "2 cups flour", "1.5 tbsp olive oil" (explicit units)
+    /^(\d+(?:\.\d+)?)\s+(cups?|tbsp|tablespoons?|tsp|teaspoons?|ml|milliliters?|l|liters?|litres?|g|grams?|grammes?|kg|kilograms?|kilogrammes?|oz|ounces?|lb|pounds?|cl|centilitres?|dl|décilitres?)\s+(?:de?\s+|d')?(.+)$/i,
+    // "2 large eggs", "1 medium onion" (size descriptors as units)
+    /^(\d+(?:\.\d+)?)\s+(large|medium|small|whole|gros|grosse|moyen|moyenne|petit|petite)\s+(.+)$/,
     // "1/2 cup sugar", "3/4 tsp salt", "1/2 c. à s. d'huile"
-    /^(\d+\/\d+)\s+(c\.\s*à\s*s\.|cuil\.\s*à\s*soupe|c\.à\.s\.|cas|c\.\s*à\s*c\.|cuil\.\s*à\s*café|c\.à\.c\.|cac|[a-zA-Z.àé]+(?:\s+à\s+[a-zA-Z]+)?)\s+(?:de?\s+|d')?(.+)$/i,
-    // "2 Tomates", "3 oeufs" (standalone numbers without units)
+    /^(\d+\/\d+)\s+(c\.\s*à\s*s\.|cuil\.\s*à\s*soupe|c\.à\.s\.|cas|c\.\s*à\s*c\.|cuil\.\s*à\s*café|c\.à\.c\.|cac|cups?|tbsp|tablespoons?|tsp|teaspoons?|ml|milliliters?|l|liters?|litres?|g|grams?|grammes?|kg|kilograms?|kilogrammes?|oz|ounces?|lb|pounds?|cl|centilitres?|dl|décilitres?)\s+(?:de?\s+|d')?(.+)$/i,
+    // "2 Tomates", "3 oeufs" (standalone numbers without units) - MUST BE LAST
     /^(\d+(?:\.\d+)?)\s+(.+)$/,
   ]
   
@@ -160,7 +160,9 @@ export function areIngredientsSimilar(name1: string, name2: string): boolean {
   const normalized2 = normalizeIngredientName(baseName2)
   
   // Exact match
-  if (normalized1 === normalized2) return true
+  if (normalized1 === normalized2) {
+    return true
+  }
   
   // Check if one is contained in the other (e.g., "olive oil" vs "extra virgin olive oil")
   if (normalized1.includes(normalized2) || normalized2.includes(normalized1)) {
@@ -172,7 +174,9 @@ export function areIngredientsSimilar(name1: string, name2: string): boolean {
   const baseIngredient2 = extractBaseIngredient(normalized2)
   
   // Compare base ingredients
-  if (baseIngredient1 === baseIngredient2) return true
+  if (baseIngredient1 === baseIngredient2) {
+    return true
+  }
   
   // Common ingredient variations (multilingual support)
   const variations: Record<string, string[]> = {
@@ -229,15 +233,26 @@ export function areIngredientsSimilar(name1: string, name2: string): boolean {
 function extractBaseIngredientFromCombined(name: string): string {
   // If the name contains "+", extract the ingredient name after the quantities
   if (name.includes('+')) {
-    // Pattern: "500 grammes + 2 Tomates" -> extract "Tomates"
-    const match = name.match(/\+\s*\d+(?:\.\d+)?\s*(?:[a-zA-Z]+\s+)?(.+)$/)
-    if (match) {
-      return match[1].trim()
+    // Pattern: "2 + 500 grammes Tomates" -> extract "Tomates"
+    // Look for the ingredient name at the end, after all quantities and units
+    const parts = name.split('+')
+    const lastPart = parts[parts.length - 1].trim()
+    
+    // Remove any leading quantity and unit from the last part
+    const cleaned = lastPart.replace(/^\d+(?:\.\d+)?\s*(?:[a-zA-Z.àé]+\s+)*/, '').trim()
+    
+    if (cleaned) {
+      return cleaned
     }
     
-    // Fallback: take everything after the last "+" and remove leading quantities/units
-    const afterPlus = name.split('+').pop()?.trim() || name
-    return afterPlus.replace(/^\d+(?:\.\d+)?\s*(?:[a-zA-Z]+\s+)?/, '').trim()
+    // Fallback: look for the first word that's not a number or common unit
+    const words = lastPart.split(/\s+/)
+    for (const word of words) {
+      if (!/^\d+(?:\.\d+)?$/.test(word) && // Not a number
+          !['grammes', 'gramme', 'g', 'kg', 'ml', 'l', 'cups', 'cup', 'tbsp', 'tsp', 'c.', 'à', 's.', 'cuil.', 'soupe', 'café'].includes(word.toLowerCase())) {
+        return words.slice(words.indexOf(word)).join(' ')
+      }
+    }
   }
   
   return name
