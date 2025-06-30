@@ -7,7 +7,7 @@ import { prisma } from '@/lib/prisma'
 export const runtime = 'nodejs'
 
 /**
- * Handle recipe accept/decline actions
+ * Handle recipe accept/decline actions and undo functionality
  */
 export async function POST(request: NextRequest) {
   try {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     const { 
       sessionId, 
       recipeId, 
-      action, // 'accept' or 'decline'
+      action, // 'accept', 'decline', or 'undo'
       reason, // optional reason for decline
       userId = 'anonymous'
     } = body
@@ -54,27 +54,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (!recipeId || (typeof recipeId !== 'string' && typeof recipeId !== 'number')) {
+    if (!action || !['accept', 'decline', 'undo'].includes(action)) {
       return NextResponse.json(
-        { error: 'Recipe ID is required' },
+        { error: 'Action must be "accept", "decline", or "undo"' },
         { status: 400 }
       )
     }
 
-    // Convert recipeId to number for database operations
-    const recipeIdNum = typeof recipeId === 'string' ? parseInt(recipeId, 10) : recipeId
-    if (isNaN(recipeIdNum)) {
-      return NextResponse.json(
-        { error: 'Invalid recipe ID' },
-        { status: 400 }
-      )
-    }
-
-    if (!action || !['accept', 'decline'].includes(action)) {
-      return NextResponse.json(
-        { error: 'Action must be "accept" or "decline"' },
-        { status: 400 }
-      )
+    // For undo action, recipeId is not required
+    if (action !== 'undo') {
+      if (!recipeId || (typeof recipeId !== 'string' && typeof recipeId !== 'number')) {
+        return NextResponse.json(
+          { error: 'Recipe ID is required for accept/decline actions' },
+          { status: 400 }
+        )
+      }
     }
 
     console.log('Validation passed')
@@ -89,6 +83,29 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Session found')
+
+    // Handle undo action
+    if (action === 'undo') {
+      const undoResult = await mealPlanningChain.undoLastAction(sessionId)
+      
+      return NextResponse.json({
+        success: undoResult.success,
+        action: 'undo',
+        message: undoResult.message,
+        undoneAction: undoResult.undoneAction
+      }, {
+        headers: getRateLimitHeaders(clientIP, 'ip')
+      })
+    }
+
+    // Convert recipeId to number for database operations
+    const recipeIdNum = typeof recipeId === 'string' ? parseInt(recipeId, 10) : recipeId
+    if (isNaN(recipeIdNum)) {
+      return NextResponse.json(
+        { error: 'Invalid recipe ID' },
+        { status: 400 }
+      )
+    }
 
     // Verify recipe exists
     const recipe = await prisma.recipe.findUnique({
@@ -113,9 +130,9 @@ export async function POST(request: NextRequest) {
       aiResponse = await mealPlanningChain.acceptRecipe(sessionId, recipeIdNum)
       await handleRecipeAccept(sessionId, recipeIdNum, recipe, userId, prisma)
     } else {
-      const declineResult = await mealPlanningChain.declineRecipe(sessionId, recipeIdNum, reason)
-      aiResponse = declineResult.response
-      suggestedRecipes = declineResult.suggestedRecipes || []
+      aiResponse = await mealPlanningChain.declineRecipe(sessionId, recipeIdNum, reason)
+      // Note: New decline method doesn't return suggestions automatically
+      // Suggestions would need to be generated separately if needed
       await handleRecipeDecline(sessionId, recipeIdNum, recipe, reason, userId)
     }
 

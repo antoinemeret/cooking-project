@@ -231,7 +231,7 @@ export default function GroceriesPage() {
   }
 
   return (
-    <div className="container mx-auto p-3 sm:p-4 max-w-full">
+    <div className="container mx-auto p-3 sm:p-4 max-w-full pb-20">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
         <div>

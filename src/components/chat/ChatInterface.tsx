@@ -6,11 +6,17 @@ import { RecipeCard, RecipeSuggestion } from "./RecipeCard"
 import { ChatInput } from "./ChatInput"
 import { TypingIndicator } from "./TypingIndicator"
 import { Button } from "@/components/ui/button"
-import { RefreshCw, AlertCircle } from "lucide-react"
+import { RefreshCw, AlertCircle, Clock, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface ChatInterfaceProps {
   className?: string
+}
+
+interface SessionTimeoutInfo {
+  isNearTimeout: boolean
+  timeUntilTimeout: number
+  timeUntilWarning: number
 }
 
 interface ChatSession {
@@ -19,12 +25,16 @@ interface ChatSession {
   suggestedRecipes: RecipeSuggestion[]
   isTyping: boolean
   error: string | null
+  isResumed: boolean
+  timeoutInfo?: SessionTimeoutInfo
 }
 
 export function ChatInterface({ className }: ChatInterfaceProps) {
   const [session, setSession] = useState<ChatSession | null>(null)
   const [isInitializing, setIsInitializing] = useState(true)
+  const [showTimeoutWarning, setShowTimeoutWarning] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const timeoutCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const userId = 'user123' // TODO: Replace with actual user ID
 
   // Auto-scroll to bottom when new messages arrive
@@ -39,15 +49,48 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   // Initialize chat session
   useEffect(() => {
     initializeSession()
+    
+    // Cleanup on unmount
+    return () => {
+      if (timeoutCheckInterval.current) {
+        clearInterval(timeoutCheckInterval.current)
+      }
+    }
   }, [])
 
-  const initializeSession = async () => {
+  // Check for stored session ID in localStorage
+  const getStoredSessionId = (): string | null => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(`chat_session_${userId}`)
+    }
+    return null
+  }
+
+  const storeSessionId = (sessionId: string) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`chat_session_${userId}`, sessionId)
+    }
+  }
+
+  const clearStoredSessionId = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(`chat_session_${userId}`)
+    }
+  }
+
+  const initializeSession = async (forceNew = false) => {
     setIsInitializing(true)
     try {
+      const storedSessionId = forceNew ? null : getStoredSessionId()
+      
       const response = await fetch('/api/assistant/chat', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId })
+        body: JSON.stringify({ 
+          userId,
+          sessionId: storedSessionId,
+          forceNew
+        })
       })
 
       if (!response.ok) {
@@ -55,6 +98,9 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       }
 
       const data = await response.json()
+      
+      // Store the session ID for future use
+      storeSessionId(data.sessionId)
       
       setSession({
         sessionId: data.sessionId,
@@ -65,8 +111,13 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         }],
         suggestedRecipes: [],
         isTyping: false,
-        error: null
+        error: null,
+        isResumed: data.isResumed || false
       })
+
+      // Start timeout monitoring
+      startTimeoutMonitoring(data.sessionId)
+      
     } catch (error) {
       console.error('Failed to initialize chat session:', error)
       setSession({
@@ -74,11 +125,53 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         messages: [],
         suggestedRecipes: [],
         isTyping: false,
-        error: 'Failed to start conversation. Please try again.'
+        error: 'Failed to start conversation. Please try again.',
+        isResumed: false
       })
     } finally {
       setIsInitializing(false)
     }
+  }
+
+  const startTimeoutMonitoring = (sessionId: string) => {
+    // Clear existing interval
+    if (timeoutCheckInterval.current) {
+      clearInterval(timeoutCheckInterval.current)
+    }
+
+    // Check session timeout every 30 seconds
+    timeoutCheckInterval.current = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/assistant/chat?sessionId=${sessionId}`)
+        if (response.ok) {
+          const data = await response.json()
+          const timeoutInfo = data.timeout
+
+          setSession(prev => prev ? {
+            ...prev,
+            timeoutInfo
+          } : null)
+
+          // Show warning if near timeout
+          setShowTimeoutWarning(timeoutInfo.isNearTimeout)
+          
+          // If session expired, clear stored session and reinitialize
+          if (timeoutInfo.timeUntilTimeout <= 0) {
+            clearStoredSessionId()
+            clearInterval(timeoutCheckInterval.current!)
+            setShowTimeoutWarning(false)
+            await initializeSession(true) // Force new session
+          }
+        } else if (response.status === 404) {
+          // Session not found, reinitialize
+          clearStoredSessionId()
+          clearInterval(timeoutCheckInterval.current!)
+          await initializeSession(true)
+        }
+      } catch (error) {
+        console.error('Error checking session timeout:', error)
+      }
+    }, 30000) // Check every 30 seconds
   }
 
   const sendMessage = async (userInput: string) => {
@@ -113,7 +206,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
       if (response.status === 404) {
         // Session expired, reinitialize and retry
-        await initializeSession()
+        clearStoredSessionId()
+        await initializeSession(true)
         // Retry the message after reinitializing
         return sendMessage(userInput)
       }
@@ -239,7 +333,39 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   }
 
   const resetConversation = () => {
-    initializeSession()
+    clearStoredSessionId()
+    if (timeoutCheckInterval.current) {
+      clearInterval(timeoutCheckInterval.current)
+    }
+    setShowTimeoutWarning(false)
+    initializeSession(true)
+  }
+
+  const extendSession = async () => {
+    if (!session) return
+    
+    try {
+      // Send a simple message to extend the session
+      await fetch('/api/assistant/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: session.sessionId,
+          userInput: 'continue',
+          userId,
+          streaming: false
+        })
+      })
+      
+      setShowTimeoutWarning(false)
+    } catch (error) {
+      console.error('Failed to extend session:', error)
+    }
+  }
+
+  const formatTimeRemaining = (milliseconds: number): string => {
+    const minutes = Math.floor(milliseconds / 60000)
+    return `${minutes} minute${minutes !== 1 ? 's' : ''}`
   }
 
   if (isInitializing) {
@@ -259,7 +385,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         <div className="text-center">
           <AlertCircle className="h-8 w-8 text-destructive mx-auto mb-4" />
           <p className="text-muted-foreground mb-4">Failed to start conversation</p>
-          <Button onClick={initializeSession}>Try Again</Button>
+          <Button onClick={() => initializeSession()}>Try Again</Button>
         </div>
       </div>
     )
@@ -267,10 +393,38 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
+      {/* Session Timeout Warning */}
+      {showTimeoutWarning && session.timeoutInfo && (
+        <div className="bg-amber-50 border-b border-amber-200 p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-amber-800">
+            <Clock className="h-4 w-4" />
+            <span className="text-sm">
+              Your session will expire in {formatTimeRemaining(session.timeoutInfo.timeUntilTimeout)}
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={extendSession}
+            className="border-amber-300 text-amber-800 hover:bg-amber-100"
+          >
+            Continue Session
+          </Button>
+        </div>
+      )}
+
       {/* Chat Header */}
       <div className="flex items-center justify-between p-3 sm:p-4 md:p-6 border-b bg-background">
         <div className="min-w-0 flex-1 mr-3">
-          <h1 className="text-base sm:text-lg md:text-xl font-semibold truncate">Recipe Assistant</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-base sm:text-lg md:text-xl font-semibold truncate">Recipe Assistant</h1>
+            {session.isResumed && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                <RotateCcw className="h-3 w-3" />
+                Resumed
+              </span>
+            )}
+          </div>
           <p className="text-xs sm:text-sm md:text-base text-muted-foreground hidden sm:block">
             Let me help you plan your meals! 🍳
           </p>
@@ -332,7 +486,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       />
 
       {/* Conversation Starters */}
-      {session.messages.length === 1 && (
+      {session.messages.length === 1 && !session.isResumed && (
         <div className="p-3 sm:p-4 md:p-6 border-t bg-muted/30">
           <p className="text-xs sm:text-sm md:text-base text-muted-foreground mb-2 md:mb-3">Try asking:</p>
           <div className="flex flex-wrap gap-1.5 sm:gap-2 md:gap-3">

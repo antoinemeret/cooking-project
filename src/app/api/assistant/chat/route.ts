@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { mealPlanningChain } from '@/lib/conversation-chain'
 import { conversationMemory } from '@/lib/conversation-memory'
 import { checkAIApiRateLimit, getRateLimitHeaders, getClientIP } from '@/lib/rate-limiter'
+import { globalSessionStore } from '@/lib/session-store'
 
 export const runtime = 'nodejs'
 
@@ -205,7 +206,7 @@ async function handleStandardResponse(
 }
 
 /**
- * Start a new conversation session
+ * Start a new conversation session or resume existing one
  */
 export async function PUT(request: NextRequest) {
   try {
@@ -226,22 +227,37 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId = 'anonymous' } = body
+    const { userId = 'anonymous', sessionId: preferredSessionId, forceNew = false } = body
 
-    // Start new conversation
-    const sessionId = await mealPlanningChain.startConversation(userId)
+    if (forceNew) {
+      // Force start a new conversation
+      const sessionId = await mealPlanningChain.startConversation(userId)
+      conversationMemory.initializeSession(sessionId, userId)
+
+      const session = mealPlanningChain.getSession(sessionId)
+      const welcomeMessage = session?.messages[0]?.content || 'Welcome! How can I help you plan your meals?'
+
+      return NextResponse.json({
+        success: true,
+        sessionId,
+        welcomeMessage,
+        isResumed: false
+      }, {
+        headers: getRateLimitHeaders(clientIP, 'ip')
+      })
+    }
+
+    // Try to resume or start new conversation
+    const result = await mealPlanningChain.resumeOrStartConversation(userId, preferredSessionId)
     
-    // Initialize memory for the session
-    conversationMemory.initializeSession(sessionId, userId)
-
-    // Get welcome message
-    const session = mealPlanningChain.getSession(sessionId)
-    const welcomeMessage = session?.messages[0]?.content || 'Welcome! How can I help you plan your meals?'
+    // Initialize memory for new sessions
+    if (!result.isResumed) {
+      conversationMemory.initializeSession(result.sessionId, userId)
+    }
 
     return NextResponse.json({
       success: true,
-      sessionId,
-      welcomeMessage
+      ...result
     }, {
       headers: getRateLimitHeaders(clientIP, 'ip')
     })
@@ -249,14 +265,14 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     console.error('Session creation error:', error)
     return NextResponse.json(
-      { error: 'Failed to create session' },
+      { error: 'Failed to create or resume session' },
       { status: 500 }
     )
   }
 }
 
 /**
- * Get session information
+ * Get session information and timeout status
  */
 export async function GET(request: NextRequest) {
   try {
@@ -273,12 +289,14 @@ export async function GET(request: NextRequest) {
     const session = mealPlanningChain.getSession(sessionId)
     if (!session) {
       return NextResponse.json(
-        { error: 'Session not found' },
+        { error: 'Session not found or expired' },
         { status: 404 }
       )
     }
 
     const sessionStats = conversationMemory.getSessionStats(sessionId)
+    const metadata = globalSessionStore.getSessionMetadata(sessionId)
+    const timeoutInfo = globalSessionStore.getSessionTimeoutInfo(sessionId)
 
     return NextResponse.json({
       success: true,
@@ -291,6 +309,14 @@ export async function GET(request: NextRequest) {
         createdAt: session.createdAt,
         updatedAt: session.updatedAt
       },
+      metadata: metadata ? {
+        status: metadata.status,
+        isActive: metadata.isActive,
+        lastActivity: metadata.lastActivity,
+        messageCount: metadata.messageCount,
+        acceptedRecipesCount: metadata.acceptedRecipesCount
+      } : null,
+      timeout: timeoutInfo,
       stats: sessionStats
     })
 

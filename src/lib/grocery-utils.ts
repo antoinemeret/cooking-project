@@ -144,6 +144,7 @@ export function normalizeIngredientName(name: string): string {
   return name
     .toLowerCase()
     .replace(/[.,()]/g, '') // Remove punctuation
+    .replace(/'/g, ' ') // Replace apostrophes with spaces for better matching
     .replace(/\s+/g, ' ') // Normalize whitespace
     .trim()
 }
@@ -188,9 +189,14 @@ export function areIngredientsSimilar(name1: string, name2: string): boolean {
     'onion': ['onions', 'yellow onion', 'white onion', 'oignon', 'oignons'],
     'oignon': ['onions', 'yellow onion', 'white onion', 'onion', 'oignons'],
     
-    // Garlic (English/French)
-    'garlic': ['garlic cloves', 'garlic clove', 'fresh garlic', 'ail', 'gousse dail'],
-    'ail': ['garlic cloves', 'garlic clove', 'fresh garlic', 'garlic', 'gousse dail'],
+    // Garlic (English/French) - including normalized forms without apostrophes
+    'garlic': ['garlic cloves', 'garlic clove', 'fresh garlic', 'ail', 'gousse dail', 'gousse d ail', 'gousses d ail', 'gousses d ails'],
+    'ail': ['garlic cloves', 'garlic clove', 'fresh garlic', 'garlic', 'gousse dail', 'gousse d ail', 'gousses d ail', 'gousses d ails'],
+    'gousse': ['garlic cloves', 'garlic clove', 'fresh garlic', 'garlic', 'ail', 'gousse d ail', 'gousses d ail', 'gousses d ails'],
+    'gousses': ['garlic cloves', 'garlic clove', 'fresh garlic', 'garlic', 'ail', 'gousse d ail', 'gousses d ail', 'gousses d ails'],
+    'gousse d ail': ['garlic cloves', 'garlic clove', 'fresh garlic', 'garlic', 'ail', 'gousse', 'gousses', 'gousses d ail', 'gousses d ails'],
+    'gousses d ail': ['garlic cloves', 'garlic clove', 'fresh garlic', 'garlic', 'ail', 'gousse', 'gousses', 'gousse d ail', 'gousses d ails'],
+    'gousses d ails': ['garlic cloves', 'garlic clove', 'fresh garlic', 'garlic', 'ail', 'gousse', 'gousses', 'gousse d ail', 'gousses d ail'],
     
     // Common seasonings
     'salt': ['sea salt', 'kosher salt', 'table salt', 'sel'],
@@ -505,14 +511,13 @@ export function aggregateIngredients(recipes: Array<{
 export function formatIngredientForDisplay(ingredient: AggregatedIngredient): string {
   let display = ingredient.name
   
-  // Only prepend quantity and unit if we have both and the name doesn't already include them
-  if (ingredient.quantity && ingredient.unit && !ingredient.name.includes('+')) {
-    display = `${ingredient.quantity} ${ingredient.unit} ${ingredient.name}`
-  }
-  
-  // Add source info if from multiple recipes
-  if (ingredient.sources.length > 1) {
-    display += ` (${ingredient.sources.length} recipes)`
+  // Prepend quantity and unit if we have them and the name doesn't already include them
+  if (ingredient.quantity && !ingredient.name.includes('+')) {
+    if (ingredient.unit) {
+      display = `${ingredient.quantity} ${ingredient.unit} ${ingredient.name}`
+    } else {
+      display = `${ingredient.quantity} ${ingredient.name}`
+    }
   }
   
   return display

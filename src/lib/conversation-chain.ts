@@ -12,12 +12,21 @@ export interface ConversationMessage {
   timestamp: Date
 }
 
+export interface RecipeAction {
+  recipeId: number
+  action: 'accept' | 'decline'
+  timestamp: Date
+  reason?: string
+  undone?: boolean
+}
+
 export interface MealPlanningSession {
   id: string
   userId: string
   messages: ConversationMessage[]
   acceptedRecipes: number[] // Recipe IDs that user accepted
   declinedRecipes: number[] // Recipe IDs that user declined
+  recipeActions: RecipeAction[] // Full history of actions for undo functionality
   currentCriteria: RecipeFilterCriteria
   createdAt: Date
   updatedAt: Date
@@ -64,6 +73,7 @@ export class MealPlanningConversationChain {
       messages: [],
       acceptedRecipes: [],
       declinedRecipes: [],
+      recipeActions: [],
       currentCriteria: {
         seasonality: true, // Default to seasonal filtering
         excludeAccepted: true,
@@ -73,13 +83,64 @@ export class MealPlanningConversationChain {
       updatedAt: new Date()
     }
 
-    globalSessionStore.setSession(sessionId, session)
+    // Use enhanced session creation
+    globalSessionStore.createSession(sessionId, session)
 
     // Welcome message
     const welcomeMessage = await this.generateWelcomeMessage(userId)
     this.addMessage(sessionId, 'assistant', welcomeMessage)
 
     return sessionId
+  }
+
+  /**
+   * Resume an existing conversation or start a new one
+   */
+  async resumeOrStartConversation(userId: string, preferredSessionId?: string): Promise<{
+    sessionId: string
+    isResumed: boolean
+    welcomeMessage: string
+  }> {
+    // Try to use preferred session if provided and valid
+    if (preferredSessionId && globalSessionStore.isSessionValid(preferredSessionId)) {
+      const session = globalSessionStore.getSession(preferredSessionId)
+      if (session && session.userId === userId) {
+        return {
+          sessionId: preferredSessionId,
+          isResumed: true,
+          welcomeMessage: "Welcome back! Let's continue planning your meals. 🍳"
+        }
+      }
+    }
+
+    // Try to find the most recent active session for the user
+    const recentSessionId = globalSessionStore.getMostRecentUserSession(userId)
+    if (recentSessionId) {
+      const session = globalSessionStore.getSession(recentSessionId)
+      if (session) {
+        const metadata = globalSessionStore.getSessionMetadata(recentSessionId)
+        const resumeMessage = `Welcome back! I found your previous conversation from ${
+          metadata?.lastActivity.toLocaleDateString()
+        }. Would you like to continue where we left off, or start fresh?`
+        
+        return {
+          sessionId: recentSessionId,
+          isResumed: true,
+          welcomeMessage: resumeMessage
+        }
+      }
+    }
+
+    // Start a new conversation
+    const newSessionId = await this.startConversation(userId)
+    const session = globalSessionStore.getSession(newSessionId)
+    const welcomeMessage = session?.messages[0]?.content || 'Welcome! How can I help you plan your meals?'
+
+    return {
+      sessionId: newSessionId,
+      isResumed: false,
+      welcomeMessage
+    }
   }
 
   /**
@@ -177,6 +238,14 @@ export class MealPlanningConversationChain {
       throw new Error('Session not found')
     }
 
+    // Record the action
+    const action: RecipeAction = {
+      recipeId,
+      action: 'accept',
+      timestamp: new Date()
+    }
+    session.recipeActions.push(action)
+
     if (!session.acceptedRecipes.includes(recipeId)) {
       session.acceptedRecipes.push(recipeId)
     }
@@ -189,19 +258,28 @@ export class MealPlanningConversationChain {
 
     this.addMessage(sessionId, 'assistant', confirmationMessage)
     session.updatedAt = new Date()
-    globalSessionStore.setSession(sessionId, session) // Update the session
+    globalSessionStore.setSession(sessionId, session)
 
     return confirmationMessage
   }
 
   /**
-   * Decline a recipe suggestion and get new alternatives
+   * Decline a recipe suggestion
    */
-  async declineRecipe(sessionId: string, recipeId: number, reason?: string): Promise<{ response: string; suggestedRecipes?: RecipeRecommendation[] }> {
+  async declineRecipe(sessionId: string, recipeId: number, reason?: string): Promise<string> {
     const session = globalSessionStore.getSession(sessionId)
     if (!session) {
       throw new Error('Session not found')
     }
+
+    // Record the action
+    const action: RecipeAction = {
+      recipeId,
+      action: 'decline',
+      timestamp: new Date(),
+      reason
+    }
+    session.recipeActions.push(action)
 
     if (!session.declinedRecipes.includes(recipeId)) {
       session.declinedRecipes.push(recipeId)
@@ -215,46 +293,196 @@ export class MealPlanningConversationChain {
 
     if (reason) {
       responseMessage += ` Thanks for letting me know ${reason}.`
-      
-      // Update criteria based on decline reason
-      if (reason.toLowerCase().includes('too long') || reason.toLowerCase().includes('takes too much time')) {
-        session.currentCriteria.maxCookingTime = Math.min(session.currentCriteria.maxCookingTime || 60, recipe?.time || 60)
+    }
+
+    responseMessage += ` Let me suggest something else that might work better for you.`
+
+    this.addMessage(sessionId, 'assistant', responseMessage)
+    session.updatedAt = new Date()
+    globalSessionStore.setSession(sessionId, session)
+
+    return responseMessage
+  }
+
+  /**
+   * Undo the last recipe action
+   */
+  async undoLastAction(sessionId: string): Promise<{ success: boolean; message: string; undoneAction?: RecipeAction }> {
+    const session = globalSessionStore.getSession(sessionId)
+    if (!session) {
+      throw new Error('Session not found')
+    }
+
+    // Find the last non-undone action
+    const lastActionIndex = session.recipeActions.findLastIndex(action => !action.undone)
+    
+    if (lastActionIndex === -1) {
+      return {
+        success: false,
+        message: "There's nothing to undo right now."
       }
     }
 
-    // Get alternative recipes after declining
-    const availableRecipes = await this.getFilteredRecipes(session)
-    const alternativeRecipes = availableRecipes.slice(0, 2) // Get top 2 alternatives
+    const lastAction = session.recipeActions[lastActionIndex]
+    const recipe = await prisma.recipe.findUnique({ where: { id: lastAction.recipeId } })
 
-    if (alternativeRecipes.length > 0) {
-      responseMessage += ` Here are some alternatives that might work better:`
-      
-      // Create recipe recommendations
-      const suggestedRecipes: RecipeRecommendation[] = alternativeRecipes.map(altRecipe => ({
-        recipe: altRecipe,
-        reason: reason ? `Alternative to ${recipe?.title} (${reason})` : `Alternative to ${recipe?.title}`,
-        confidence: 0.8
-      }))
+    // Mark the action as undone
+    lastAction.undone = true
 
-      this.addMessage(sessionId, 'assistant', responseMessage)
-      session.updatedAt = new Date()
-      globalSessionStore.setSession(sessionId, session) // Update the session
+    // Reverse the action
+    if (lastAction.action === 'accept') {
+      session.acceptedRecipes = session.acceptedRecipes.filter(id => id !== lastAction.recipeId)
+    } else if (lastAction.action === 'decline') {
+      session.declinedRecipes = session.declinedRecipes.filter(id => id !== lastAction.recipeId)
+    }
 
+    const undoMessage = `I've undone your ${lastAction.action} of **${recipe?.title}**. You can now make a different choice about this recipe.`
+    
+    this.addMessage(sessionId, 'assistant', undoMessage)
+    session.updatedAt = new Date()
+    globalSessionStore.setSession(sessionId, session)
+
+    return {
+      success: true,
+      message: undoMessage,
+      undoneAction: lastAction
+    }
+  }
+
+  /**
+   * Get session summary for confirmation before finalizing
+   */
+  async getSessionSummary(sessionId: string): Promise<{
+    acceptedRecipes: Array<{ id: number; title: string; summary?: string }>
+    declinedRecipes: Array<{ id: number; title: string; reason?: string }>
+    totalInteractions: number
+    sessionDuration: string
+    canFinalize: boolean
+  }> {
+    const session = globalSessionStore.getSession(sessionId)
+    if (!session) {
+      throw new Error('Session not found')
+    }
+
+    // Get accepted recipes with details
+    const acceptedRecipes = await Promise.all(
+      session.acceptedRecipes.map(async (id) => {
+        const recipe = await prisma.recipe.findUnique({ where: { id } })
+        return {
+          id,
+          title: recipe?.title || 'Unknown Recipe',
+          summary: recipe?.summary
+        }
+      })
+    )
+
+    // Get declined recipes with reasons
+    const declinedRecipes = await Promise.all(
+      session.declinedRecipes.map(async (id) => {
+        const recipe = await prisma.recipe.findUnique({ where: { id } })
+        const lastDeclineAction = session.recipeActions
+          .filter(action => action.recipeId === id && action.action === 'decline' && !action.undone)
+          .pop()
+        
+        return {
+          id,
+          title: recipe?.title || 'Unknown Recipe',
+          reason: lastDeclineAction?.reason
+        }
+      })
+    )
+
+    // Calculate session duration
+    const duration = new Date().getTime() - session.createdAt.getTime()
+    const minutes = Math.floor(duration / 60000)
+    const sessionDuration = minutes < 60 
+      ? `${minutes} minutes`
+      : `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+
+    const canFinalize = acceptedRecipes.length > 0
+
+    return {
+      acceptedRecipes,
+      declinedRecipes,
+      totalInteractions: session.recipeActions.filter(a => !a.undone).length,
+      sessionDuration,
+      canFinalize
+    }
+  }
+
+  /**
+   * Finalize the meal plan and mark session as completed
+   */
+  async finalizeMealPlan(sessionId: string): Promise<{ success: boolean; message: string; mealPlanId?: number }> {
+    const session = globalSessionStore.getSession(sessionId)
+    if (!session) {
+      throw new Error('Session not found')
+    }
+
+    if (session.acceptedRecipes.length === 0) {
       return {
-        response: responseMessage,
-        suggestedRecipes
-      }
-    } else {
-      responseMessage += ` I don't have any other recipes that match your current preferences. Would you like to try a different type of cuisine or cooking style?`
-      
-      this.addMessage(sessionId, 'assistant', responseMessage)
-      session.updatedAt = new Date()
-      globalSessionStore.setSession(sessionId, session) // Update the session
-
-      return {
-        response: responseMessage
+        success: false,
+        message: "You haven't accepted any recipes yet. Add some recipes to your plan before finalizing."
       }
     }
+
+    try {
+      // Create meal plan in database
+      const mealPlan = await prisma.mealPlan.create({
+        data: {
+          userId: session.userId,
+          status: 'active'
+        }
+      })
+
+      // Add planned recipes
+      await Promise.all(
+        session.acceptedRecipes.map(recipeId =>
+          prisma.plannedRecipe.create({
+            data: {
+              mealPlanId: mealPlan.id,
+              recipeId,
+              completed: false
+            }
+          })
+        )
+      )
+
+      // Mark session as completed
+      globalSessionStore.completeSession(sessionId)
+
+      const finalMessage = `Perfect! I've created your meal plan with ${session.acceptedRecipes.length} recipe${session.acceptedRecipes.length !== 1 ? 's' : ''}. You can view and manage your plan in the Planner tab. Happy cooking! 🍳`
+      
+      this.addMessage(sessionId, 'assistant', finalMessage)
+
+      return {
+        success: true,
+        message: finalMessage,
+        mealPlanId: mealPlan.id
+      }
+
+    } catch (error) {
+      console.error('Error finalizing meal plan:', error)
+      return {
+        success: false,
+        message: "Sorry, I couldn't save your meal plan right now. Please try again."
+      }
+    }
+  }
+
+  /**
+   * Get recent actions for undo functionality
+   */
+  getRecentActions(sessionId: string, limit = 5): RecipeAction[] {
+    const session = globalSessionStore.getSession(sessionId)
+    if (!session) {
+      return []
+    }
+
+    return session.recipeActions
+      .filter(action => !action.undone)
+      .slice(-limit)
+      .reverse() // Most recent first
   }
 
   /**
