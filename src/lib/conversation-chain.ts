@@ -144,47 +144,230 @@ export class MealPlanningConversationChain {
   }
 
   /**
-   * Process user input and generate AI response
+   * Validate session and user data before processing
+   */
+  private validateSessionData(sessionId: string, userInput: string): { isValid: boolean; error?: string; sanitizedInput?: string } {
+    // Check if session exists
+    const session = globalSessionStore.getSession(sessionId)
+    if (!session) {
+      return { isValid: false, error: 'Session not found or expired' }
+    }
+
+    // Validate user input
+    if (!userInput || typeof userInput !== 'string') {
+      return { isValid: false, error: 'Invalid user input' }
+    }
+
+    // Sanitize input first
+    const sanitizedInput = this.sanitizeUserInput(userInput)
+
+    // Check input length (prevent extremely long inputs)
+    if (sanitizedInput.length > 1000) {
+      return { isValid: false, error: 'Input too long. Please keep messages under 1000 characters.' }
+    }
+
+    // Check for empty or whitespace-only input after sanitization
+    if (sanitizedInput.trim().length === 0) {
+      return { isValid: false, error: 'Please enter a message' }
+    }
+
+    // Validate input patterns
+    const patternValidation = this.validateInputPattern(sanitizedInput)
+    if (!patternValidation.isValid) {
+      return { 
+        isValid: false, 
+        error: patternValidation.suggestion || 'Invalid input pattern' 
+      }
+    }
+
+    return { isValid: true, sanitizedInput }
+  }
+
+  /**
+   * Check if user has sufficient recipes for meal planning
+   */
+  private async validateRecipeCollection(userId: string): Promise<{ 
+    isValid: boolean; 
+    recipeCount: number; 
+    suggestions?: string[] 
+  }> {
+    const recipeCount = await prisma.recipe.count()
+    
+    // Very small collection (less than 5 recipes)
+    if (recipeCount < 5) {
+      return {
+        isValid: false,
+        recipeCount,
+        suggestions: [
+          "Add more recipes to your collection for better meal planning",
+          "Import recipes from photos or websites",
+          "Browse the recipe collection to see what's available",
+          "Try searching for specific ingredients you have"
+        ]
+      }
+    }
+
+    // Small collection (5-15 recipes) - still valid but with suggestions
+    if (recipeCount < 15) {
+      return {
+        isValid: true,
+        recipeCount,
+        suggestions: [
+          "Consider adding more recipes for variety",
+          "I'll work with what you have and suggest the best matches"
+        ]
+      }
+    }
+
+    return { isValid: true, recipeCount }
+  }
+
+  /**
+   * Generate helpful response for users with small recipe collections
+   */
+  private async generateSmallCollectionResponse(
+    recipeCount: number, 
+    suggestions: string[]
+  ): Promise<string> {
+    if (recipeCount === 0) {
+      return `I notice you don't have any recipes in your collection yet! To get started with meal planning, you'll need to add some recipes first. Here's what you can do:
+
+• Import recipes from photos using the camera feature
+• Browse and add recipes from the recipe collection
+• Add your favorite recipes manually
+
+Once you have some recipes saved, I'll be able to help you plan amazing meals! 🍳`
+    }
+
+    if (recipeCount < 5) {
+      return `I see you have ${recipeCount} recipe${recipeCount !== 1 ? 's' : ''} in your collection. While I can work with what you have, you'll get much better meal planning suggestions with more recipes to choose from!
+
+Here's what I recommend:
+${suggestions.map(s => `• ${s}`).join('\n')}
+
+For now, I can help you with the recipes you have. What would you like to cook? 🍳`
+    }
+
+    return `I see you have ${recipeCount} recipes to work with. That's a good start! I'll do my best to find great matches for your needs.
+
+${suggestions.map(s => `• ${s}`).join('\n')}
+
+What kind of meal are you looking for? 🍳`
+  }
+
+  /**
+   * Enhanced process user input with validation and edge case handling
    */
   async processUserInput(
     sessionId: string,
     userInput: string
-  ): Promise<{ response: string; suggestedRecipes?: RecipeRecommendation[] }> {
-    const session = globalSessionStore.getSession(sessionId)
-    if (!session) {
-      throw new Error('Session not found')
+  ): Promise<{ response: string; suggestedRecipes?: RecipeRecommendation[]; usedFallback?: boolean; error?: any }> {
+    // Validate session and input
+    const validation = this.validateSessionData(sessionId, userInput)
+    if (!validation.isValid) {
+      return {
+        response: validation.error || 'Invalid request',
+        usedFallback: true,
+        error: { type: 'invalid_response', message: validation.error }
+      }
     }
 
+    // Use sanitized input for processing
+    const sanitizedInput = validation.sanitizedInput || userInput
+    const session = globalSessionStore.getSession(sessionId)!
+
+    // Check recipe collection size for new sessions
+    if (session.messages.length <= 1) {
+      const collectionValidation = await this.validateRecipeCollection(session.userId)
+      
+      if (!collectionValidation.isValid) {
+        const smallCollectionResponse = await this.generateSmallCollectionResponse(
+          collectionValidation.recipeCount,
+          collectionValidation.suggestions || []
+        )
+        
+        this.addMessage(sessionId, 'user', userInput)
+        this.addMessage(sessionId, 'assistant', smallCollectionResponse)
+        
+        return {
+          response: smallCollectionResponse,
+          usedFallback: true,
+          error: { type: 'insufficient_data', message: 'Small recipe collection' }
+        }
+      }
+
+      // For small but valid collections, add helpful context
+      if (collectionValidation.suggestions) {
+        const contextualResponse = await this.generateSmallCollectionResponse(
+          collectionValidation.recipeCount,
+          collectionValidation.suggestions
+        )
+        
+        this.addMessage(sessionId, 'user', userInput)
+        this.addMessage(sessionId, 'assistant', contextualResponse)
+        
+        return {
+          response: contextualResponse,
+          usedFallback: false
+        }
+      }
+    }
+
+    // Continue with normal processing
     // Add user message to conversation
-    this.addMessage(sessionId, 'user', userInput)
+    this.addMessage(sessionId, 'user', sanitizedInput)
 
     // Extract criteria from user input
-    const extractedCriteria = await this.extractCriteriaFromInput(userInput, session.currentCriteria)
+    const extractedCriteria = await this.extractCriteriaFromInput(sanitizedInput, session.currentCriteria)
     session.currentCriteria = { ...session.currentCriteria, ...extractedCriteria }
 
     // Get filtered recipes based on current criteria
     const availableRecipes = await this.getFilteredRecipes(session)
 
+    // Check if we have any matching recipes
+    if (availableRecipes.length === 0) {
+      const noMatchResponse = `I couldn't find any recipes that match your criteria. Let me help you adjust your search:
+
+• Try being less specific with dietary restrictions
+• Consider different meal types or cooking methods
+• Ask me to show you what's available in your collection
+• Tell me about specific ingredients you have
+
+What would you like to try instead? 🍳`
+      
+      this.addMessage(sessionId, 'assistant', noMatchResponse)
+      session.updatedAt = new Date()
+      globalSessionStore.setSession(sessionId, session)
+
+      return {
+        response: noMatchResponse,
+        usedFallback: true,
+        error: { type: 'no_matches', message: 'No recipes match the criteria' }
+      }
+    }
+
     // Generate AI response with recipe context
-    const response = await this.ai.generateResponse(
-      userInput,
+    const aiResult = await this.ai.generateResponse(
+      sanitizedInput,
       session.messages.slice(0, -1), // Exclude the just-added user message
       availableRecipes.map(this.formatRecipeForAI),
       new Date().getMonth() + 1
     )
 
     // Add AI response to conversation
-    this.addMessage(sessionId, 'assistant', response)
+    this.addMessage(sessionId, 'assistant', aiResult.response)
 
     // Extract recipe suggestions from response if any
-    const suggestedRecipes = this.extractRecipeSuggestions(response, availableRecipes)
+    const suggestedRecipes = this.extractRecipeSuggestions(aiResult.response, availableRecipes)
 
     session.updatedAt = new Date()
     globalSessionStore.setSession(sessionId, session) // Update the session
 
     return {
-      response,
-      suggestedRecipes: suggestedRecipes.length > 0 ? suggestedRecipes : undefined
+      response: aiResult.response,
+      suggestedRecipes: suggestedRecipes.length > 0 ? suggestedRecipes : undefined,
+      usedFallback: aiResult.usedFallback,
+      error: aiResult.error
     }
   }
 
@@ -194,7 +377,7 @@ export class MealPlanningConversationChain {
   async *processUserInputStreaming(
     sessionId: string,
     userInput: string
-  ): AsyncGenerator<string, void, unknown> {
+  ): AsyncGenerator<{ content: string; usedFallback?: boolean; error?: any }, void, unknown> {
     const session = globalSessionStore.getSession(sessionId)
     if (!session) {
       throw new Error('Session not found')
@@ -219,8 +402,12 @@ export class MealPlanningConversationChain {
     )
 
     for await (const chunk of responseGenerator) {
-      fullResponse += chunk
-      yield chunk
+      fullResponse += chunk.content
+      yield {
+        content: chunk.content,
+        usedFallback: chunk.usedFallback,
+        error: chunk.error
+      }
     }
 
     // Add complete response to conversation
@@ -661,6 +848,96 @@ What would you like to cook? 🍳`
     }
 
     return suggestions
+  }
+
+  /**
+   * Sanitize and validate user input
+   */
+  private sanitizeUserInput(input: string): string {
+    // Remove potentially harmful characters and excessive whitespace
+    let sanitized = input
+      .replace(/[<>]/g, '') // Remove angle brackets to prevent XSS
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim()
+
+    // Remove excessive punctuation
+    sanitized = sanitized.replace(/[!?]{3,}/g, '!?')
+    sanitized = sanitized.replace(/\.{4,}/g, '...')
+
+    return sanitized
+  }
+
+  /**
+   * Detect and handle potentially problematic input patterns
+   */
+  private validateInputPattern(input: string): { isValid: boolean; issue?: string; suggestion?: string } {
+    const lowerInput = input.toLowerCase()
+
+    // Check for just punctuation or symbols
+    if (/^[^\w\s]*$/.test(input)) {
+      return {
+        isValid: false,
+        issue: 'Input contains only symbols',
+        suggestion: 'Please describe what you\'d like to cook or ask about meal planning'
+      }
+    }
+
+    // Check for repetitive characters (spam-like input)
+    if (/(.)\1{10,}/.test(input)) {
+      return {
+        isValid: false,
+        issue: 'Input contains repetitive characters',
+        suggestion: 'Please enter a clear question about meal planning'
+      }
+    }
+
+    // Check for very short non-meaningful input
+    if (input.length < 2 && !/^[a-zA-Z]+$/.test(input)) {
+      return {
+        isValid: false,
+        issue: 'Input too short',
+        suggestion: 'Please tell me more about what you\'d like to cook'
+      }
+    }
+
+    // Check for common non-food related requests
+    const nonFoodKeywords = ['weather', 'news', 'politics', 'sports', 'music', 'movie', 'game']
+    if (nonFoodKeywords.some(keyword => lowerInput.includes(keyword))) {
+      return {
+        isValid: false,
+        issue: 'Non-food related request',
+        suggestion: 'I\'m specialized in meal planning and recipes. What would you like to cook?'
+      }
+    }
+
+    return { isValid: true }
+  }
+
+  /**
+   * Generate suggestions for building recipe collection
+   */
+  private generateCollectionBuildingSuggestions(currentCount: number): string[] {
+    const suggestions = [
+      "Import recipes from photos using the camera feature",
+      "Browse online recipe websites and save favorites",
+      "Add family recipes you cook regularly",
+      "Save recipes from cooking apps or magazines"
+    ]
+
+    if (currentCount === 0) {
+      return [
+        "Start with 5-10 of your favorite recipes",
+        ...suggestions,
+        "Focus on recipes you actually cook and enjoy"
+      ]
+    }
+
+    return [
+      `Add ${Math.max(10 - currentCount, 5)} more recipes for better variety`,
+      ...suggestions,
+      "Include different meal types (breakfast, lunch, dinner)",
+      "Add recipes for different dietary preferences"
+    ]
   }
 }
 

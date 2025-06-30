@@ -108,14 +108,28 @@ async function handleStreamingResponse(
         )
 
         let fullResponse = ''
+        let usedFallback = false
+        let serviceError = null
+
         for await (const chunk of responseGenerator) {
-          fullResponse += chunk
+          fullResponse += chunk.content
+          
+          // Track if we're using fallback responses
+          if (chunk.usedFallback) {
+            usedFallback = true
+          }
+          
+          if (chunk.error) {
+            serviceError = chunk.error
+          }
           
           // Send chunk to client
           const data = JSON.stringify({
             type: 'chunk',
-            content: chunk,
-            sessionId
+            content: chunk.content,
+            sessionId,
+            usedFallback: chunk.usedFallback,
+            error: chunk.error
           })
           controller.enqueue(encoder.encode(`data: ${data}\n\n`))
         }
@@ -124,7 +138,9 @@ async function handleStreamingResponse(
         const completionData = JSON.stringify({
           type: 'complete',
           sessionId,
-          fullResponse
+          fullResponse,
+          usedFallback,
+          serviceError
         })
         controller.enqueue(encoder.encode(`data: ${completionData}\n\n`))
 
@@ -134,7 +150,8 @@ async function handleStreamingResponse(
         console.error('Streaming error:', error)
         const errorData = JSON.stringify({
           type: 'error',
-          error: 'Failed to process request'
+          error: 'Failed to process request',
+          details: error instanceof Error ? error.message : 'Unknown error'
         })
         controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
         controller.close()
@@ -188,6 +205,8 @@ async function handleStandardResponse(
       sessionId,
       response: result.response,
       suggestedRecipes: result.suggestedRecipes,
+      usedFallback: result.usedFallback,
+      serviceError: result.error,
       sessionStats
     }, {
       headers: getRateLimitHeaders(clientIP, 'ip')
@@ -196,7 +215,10 @@ async function handleStandardResponse(
   } catch (error) {
     console.error('Standard response error:', error)
     return NextResponse.json(
-      { error: 'Failed to process request' },
+      { 
+        error: 'Failed to process request',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { 
         status: 500,
         headers: getRateLimitHeaders(clientIP, 'ip')

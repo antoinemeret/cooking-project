@@ -27,12 +27,16 @@ interface ChatSession {
   error: string | null
   isResumed: boolean
   timeoutInfo?: SessionTimeoutInfo
+  isOffline?: boolean
+  hasNetworkError?: boolean
 }
 
 export function ChatInterface({ className }: ChatInterfaceProps) {
   const [session, setSession] = useState<ChatSession | null>(null)
   const [isInitializing, setIsInitializing] = useState(true)
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false)
+  const [isOnline, setIsOnline] = useState(true)
+  const [requestTimeout, setRequestTimeout] = useState<NodeJS.Timeout | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const timeoutCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const userId = 'user123' // TODO: Replace with actual user ID
@@ -54,6 +58,9 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     return () => {
       if (timeoutCheckInterval.current) {
         clearInterval(timeoutCheckInterval.current)
+      }
+      if (requestTimeout) {
+        clearTimeout(requestTimeout)
       }
     }
   }, [])
@@ -177,6 +184,15 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const sendMessage = async (userInput: string) => {
     if (!session) return
 
+    // Check if offline
+    if (!isOnline) {
+      setSession(prev => prev ? {
+        ...prev,
+        error: 'You appear to be offline. Please check your internet connection and try again.'
+      } : null)
+      return
+    }
+
     // Add user message immediately
     const userMessage: Message = {
       role: 'user',
@@ -189,10 +205,25 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       messages: [...prev.messages, userMessage],
       isTyping: true,
       error: null,
+      hasNetworkError: false,
       suggestedRecipes: [] // Clear previous suggestions
     } : null)
 
+    // Set up request timeout (30 seconds)
+    const timeoutId = setTimeout(() => {
+      setSession(prev => prev ? {
+        ...prev,
+        isTyping: false,
+        error: 'Request timed out. The service may be experiencing high load. Please try again.'
+      } : null)
+    }, 30000)
+
+    setRequestTimeout(timeoutId)
+
     try {
+      const controller = new AbortController()
+      const timeoutSignal = setTimeout(() => controller.abort(), 30000)
+
       const response = await fetch('/api/assistant/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -201,8 +232,13 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
           userInput,
           userId,
           streaming: false // Use non-streaming for simplicity in MVP
-        })
+        }),
+        signal: controller.signal
       })
+
+      clearTimeout(timeoutSignal)
+      clearTimeout(timeoutId)
+      setRequestTimeout(null)
 
       if (response.status === 404) {
         // Session expired, reinitialize and retry
@@ -213,14 +249,28 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       }
 
       if (!response.ok) {
-        throw new Error('Failed to send message')
+        // Handle different HTTP status codes
+        if (response.status === 429) {
+          throw new Error('Too many requests. Please wait a moment before trying again.')
+        } else if (response.status >= 500) {
+          throw new Error('Server error. Please try again in a moment.')
+        } else {
+          throw new Error('Failed to send message')
+        }
       }
 
       const data = await response.json()
       
+      // Create assistant message with potential fallback indicator
+      let assistantContent = data.response
+      if (data.usedFallback && data.serviceError) {
+        // Add a subtle indicator that we're using fallback responses
+        assistantContent += '\n\n*Note: I\'m currently experiencing some technical difficulties, so my responses may be limited. All other app features are still available.*'
+      }
+      
       const assistantMessage: Message = {
         role: 'assistant',
-        content: data.response,
+        content: assistantContent,
         timestamp: new Date()
       }
 
@@ -228,15 +278,38 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         ...prev,
         messages: [...prev.messages, assistantMessage],
         suggestedRecipes: data.suggestedRecipes || [],
-        isTyping: false
+        isTyping: false,
+        // Show service error info if available, but don't make it intrusive
+        error: data.serviceError && data.serviceError.type !== 'service_unavailable' 
+          ? `Service issue: ${data.serviceError.message}` 
+          : null
       } : null)
 
     } catch (error) {
+      clearTimeout(timeoutId)
+      setRequestTimeout(null)
+      
       console.error('Failed to send message:', error)
+      
+      let errorMessage = 'Failed to send message. Please try again.'
+      let isNetworkError = false
+      
+      if (error instanceof Error) {
+        if (error.name === 'AbortError') {
+          errorMessage = 'Request timed out due to slow connection. Please try again.'
+        } else if (error.message.includes('fetch')) {
+          errorMessage = 'Network error. Please check your internet connection.'
+          isNetworkError = true
+        } else {
+          errorMessage = error.message
+        }
+      }
+      
       setSession(prev => prev ? {
         ...prev,
         isTyping: false,
-        error: 'Failed to send message. Please try again.'
+        error: errorMessage,
+        hasNetworkError: isNetworkError
       } : null)
     }
   }
@@ -368,6 +441,30 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     return `${minutes} minute${minutes !== 1 ? 's' : ''}`
   }
 
+  // Monitor network status
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true)
+      setSession(prev => prev ? { ...prev, isOffline: false, hasNetworkError: false } : null)
+    }
+    
+    const handleOffline = () => {
+      setIsOnline(false)
+      setSession(prev => prev ? { ...prev, isOffline: true } : null)
+    }
+
+    // Set initial state
+    setIsOnline(navigator.onLine)
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
   if (isInitializing) {
     return (
       <div className={cn("flex items-center justify-center h-full", className)}>
@@ -393,8 +490,40 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
 
   return (
     <div className={cn("flex flex-col h-full", className)}>
+      {/* Offline Indicator */}
+      {!isOnline && (
+        <div className="bg-red-50 border-b border-red-200 p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-red-800">
+            <AlertCircle className="h-4 w-4" />
+            <span className="text-sm">
+              You're offline. Please check your internet connection.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Network Error Indicator */}
+      {session?.hasNetworkError && isOnline && (
+        <div className="bg-orange-50 border-b border-orange-200 p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-orange-800">
+            <AlertCircle className="h-4 w-4" />
+            <span className="text-sm">
+              Connection issues detected. Messages may be delayed.
+            </span>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setSession(prev => prev ? { ...prev, hasNetworkError: false } : null)}
+            className="border-orange-300 text-orange-800 hover:bg-orange-100"
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
+
       {/* Session Timeout Warning */}
-      {showTimeoutWarning && session.timeoutInfo && (
+      {showTimeoutWarning && session?.timeoutInfo && (
         <div className="bg-amber-50 border-b border-amber-200 p-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-amber-800">
             <Clock className="h-4 w-4" />
@@ -482,7 +611,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       {/* Chat Input */}
       <ChatInput
         onSendMessage={sendMessage}
-        disabled={session.isTyping}
+        disabled={session.isTyping || !isOnline}
+        placeholder={!isOnline ? "You're offline..." : session.isTyping ? "AI is responding..." : undefined}
       />
 
       {/* Conversation Starters */}
