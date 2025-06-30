@@ -88,27 +88,118 @@ export function areIngredientsSimilar(name1: string, name2: string): boolean {
     return true
   }
   
-  // Common ingredient variations
+  // Extract base ingredient names by removing descriptive words
+  const baseIngredient1 = extractBaseIngredient(normalized1)
+  const baseIngredient2 = extractBaseIngredient(normalized2)
+  
+  // Compare base ingredients
+  if (baseIngredient1 === baseIngredient2) return true
+  
+  // Common ingredient variations (multilingual support)
   const variations: Record<string, string[]> = {
-    'onion': ['onions', 'yellow onion', 'white onion'],
-    'tomato': ['tomatoes', 'fresh tomatoes'],
-    'garlic': ['garlic cloves', 'garlic clove', 'fresh garlic'],
-    'salt': ['sea salt', 'kosher salt', 'table salt'],
-    'pepper': ['black pepper', 'ground pepper', 'freshly ground pepper'],
-    'oil': ['olive oil', 'vegetable oil', 'cooking oil'],
-    'butter': ['unsalted butter', 'salted butter'],
-    'flour': ['all-purpose flour', 'plain flour'],
-    'sugar': ['white sugar', 'granulated sugar', 'caster sugar']
+    // Tomatoes (English/French)
+    'tomato': ['tomatoes', 'fresh tomatoes', 'tomate', 'tomates'],
+    'tomate': ['tomatoes', 'fresh tomatoes', 'tomato', 'tomates'],
+    
+    // Onions (English/French)
+    'onion': ['onions', 'yellow onion', 'white onion', 'oignon', 'oignons'],
+    'oignon': ['onions', 'yellow onion', 'white onion', 'onion', 'oignons'],
+    
+    // Garlic (English/French)
+    'garlic': ['garlic cloves', 'garlic clove', 'fresh garlic', 'ail', 'gousse dail'],
+    'ail': ['garlic cloves', 'garlic clove', 'fresh garlic', 'garlic', 'gousse dail'],
+    
+    // Common seasonings
+    'salt': ['sea salt', 'kosher salt', 'table salt', 'sel'],
+    'sel': ['sea salt', 'kosher salt', 'table salt', 'salt'],
+    'pepper': ['black pepper', 'ground pepper', 'freshly ground pepper', 'poivre'],
+    'poivre': ['black pepper', 'ground pepper', 'freshly ground pepper', 'pepper'],
+    
+    // Oils and fats
+    'oil': ['olive oil', 'vegetable oil', 'cooking oil', 'huile'],
+    'huile': ['olive oil', 'vegetable oil', 'cooking oil', 'oil'],
+    'butter': ['unsalted butter', 'salted butter', 'beurre'],
+    'beurre': ['unsalted butter', 'salted butter', 'butter'],
+    
+    // Flour and grains
+    'flour': ['all-purpose flour', 'plain flour', 'farine'],
+    'farine': ['all-purpose flour', 'plain flour', 'flour'],
+    'sugar': ['white sugar', 'granulated sugar', 'caster sugar', 'sucre'],
+    'sucre': ['white sugar', 'granulated sugar', 'caster sugar', 'sugar'],
+    
+    // Eggs
+    'egg': ['eggs', 'oeuf', 'oeufs'],
+    'oeuf': ['eggs', 'egg', 'oeufs'],
+    'oeufs': ['eggs', 'egg', 'oeuf']
   }
   
+  // Check variations for both base ingredients
   for (const [base, variants] of Object.entries(variations)) {
-    if ((normalized1.includes(base) || variants.some(v => normalized1.includes(v))) &&
-        (normalized2.includes(base) || variants.some(v => normalized2.includes(v)))) {
+    const allVariants = [base, ...variants]
+    if (allVariants.includes(baseIngredient1) && allVariants.includes(baseIngredient2)) {
       return true
     }
   }
   
   return false
+}
+
+/**
+ * Get the best representative name for merged ingredients
+ */
+function getBaseIngredientName(name1: string, name2: string): string {
+  // Choose the more descriptive name (longer one usually has more info)
+  // But prefer the one that's more commonly used
+  const base1 = extractBaseIngredient(normalizeIngredientName(name1))
+  const base2 = extractBaseIngredient(normalizeIngredientName(name2))
+  
+  // If they have the same base, choose the more descriptive original name
+  if (base1 === base2) {
+    return name1.length >= name2.length ? name1 : name2
+  }
+  
+  // Otherwise, use the first one
+  return name1
+}
+
+/**
+ * Extract the base ingredient name by removing descriptive modifiers
+ */
+function extractBaseIngredient(normalizedName: string): string {
+  // Remove common descriptive words (size, color, preparation, etc.)
+  const descriptiveWords = [
+    // Size descriptors
+    'large', 'medium', 'small', 'big', 'tiny', 'huge',
+    'gros', 'grosse', 'moyen', 'moyenne', 'petit', 'petite',
+    
+    // Color descriptors  
+    'red', 'green', 'yellow', 'white', 'black', 'brown',
+    'rouge', 'vert', 'verte', 'jaune', 'blanc', 'blanche', 'noir', 'noire',
+    
+    // Preparation descriptors
+    'fresh', 'dried', 'frozen', 'canned', 'chopped', 'sliced', 'diced',
+    'frais', 'fraiche', 'sec', 'seche', 'surgele', 'en conserve', 'hache',
+    
+    // Quality descriptors
+    'organic', 'free range', 'extra virgin', 'whole', 'ground',
+    'bio', 'entier', 'entiere', 'moulu', 'moulue'
+  ]
+  
+  let baseIngredient = normalizedName
+  
+  // Remove descriptive words
+  for (const word of descriptiveWords) {
+    // Remove word at the beginning or end, or surrounded by spaces
+    baseIngredient = baseIngredient
+      .replace(new RegExp(`^${word}\\s+`, 'i'), '')
+      .replace(new RegExp(`\\s+${word}$`, 'i'), '')
+      .replace(new RegExp(`\\s+${word}\\s+`, 'i'), ' ')
+  }
+  
+  // Remove extra spaces and trim
+  baseIngredient = baseIngredient.replace(/\s+/g, ' ').trim()
+  
+  return baseIngredient
 }
 
 /**
@@ -181,11 +272,26 @@ export function aggregateIngredients(recipes: Array<{
           if (normalizedExistingUnit === normalizedParsedUnit) {
             existing.quantity += parsed.quantity
           } else {
-            // Units don't match, keep as separate items with more descriptive names
-            existing.name = `${existing.name} (${existing.quantity} ${existing.unit} + ${parsed.quantity} ${parsed.unit})`
+            // Units don't match, combine with descriptive format
+            existing.name = getBaseIngredientName(existing.name, parsed.name)
             existing.quantity = undefined
             existing.unit = undefined
           }
+        } else if (parsed.quantity && !parsed.unit && existing.quantity && !existing.unit) {
+          // Both have quantities but no units (e.g., "2 tomates" + "4 tomates")
+          existing.quantity += parsed.quantity
+          existing.name = getBaseIngredientName(existing.name, parsed.name)
+        } else if (parsed.quantity && !existing.quantity) {
+          // New item has quantity, existing doesn't - use the more specific one
+          existing.quantity = parsed.quantity
+          existing.unit = parsed.unit
+          existing.name = getBaseIngredientName(existing.name, parsed.name)
+        } else if (!parsed.quantity && existing.quantity) {
+          // Existing has quantity, new doesn't - keep existing
+          existing.name = getBaseIngredientName(existing.name, parsed.name)
+        } else {
+          // Neither has quantities, just merge names
+          existing.name = getBaseIngredientName(existing.name, parsed.name)
         }
       } else {
         // Add new ingredient
