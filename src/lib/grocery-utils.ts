@@ -215,6 +215,18 @@ export function areIngredientsSimilar(name1: string, name2: string): boolean {
 }
 
 /**
+ * Format quantity and unit for display (used when combining different units)
+ */
+function formatQuantityAndUnit(quantity?: number, unit?: string, name?: string): string {
+  if (quantity && unit) {
+    return `${quantity} ${unit}`
+  } else if (quantity) {
+    return `${quantity}`
+  }
+  return name || ''
+}
+
+/**
  * Get the best representative name for merged ingredients
  */
 function getBaseIngredientName(name1: string, name2: string): string {
@@ -351,16 +363,21 @@ export function aggregateIngredients(recipes: Array<{
           existing.sources.push(recipe.title)
         }
         
-        // Try to aggregate quantities if units are compatible
+        // Handle quantity and unit aggregation
         if (parsed.quantity && parsed.unit && existing.quantity && existing.unit) {
           const normalizedExistingUnit = normalizeUnit(existing.unit)
           const normalizedParsedUnit = normalizeUnit(parsed.unit)
           
           if (normalizedExistingUnit === normalizedParsedUnit) {
+            // Same units - add quantities
             existing.quantity += parsed.quantity
-          } else {
-            // Units don't match, combine with descriptive format
             existing.name = getBaseIngredientName(existing.name, parsed.name)
+          } else {
+            // Different units - combine with "+" notation
+            const baseIngredientName = getBaseIngredientName(existing.name, parsed.name)
+            const existingDisplay = formatQuantityAndUnit(existing.quantity, existing.unit)
+            const parsedDisplay = formatQuantityAndUnit(parsed.quantity, parsed.unit)
+            existing.name = `${existingDisplay} + ${parsedDisplay} ${baseIngredientName}`
             existing.quantity = undefined
             existing.unit = undefined
           }
@@ -368,6 +385,14 @@ export function aggregateIngredients(recipes: Array<{
           // Both have quantities but no units (e.g., "2 tomates" + "4 tomates")
           existing.quantity += parsed.quantity
           existing.name = getBaseIngredientName(existing.name, parsed.name)
+        } else if (parsed.quantity && existing.quantity) {
+          // One has unit, one doesn't - combine with "+"
+          const baseIngredientName = getBaseIngredientName(existing.name, parsed.name)
+          const existingDisplay = formatQuantityAndUnit(existing.quantity, existing.unit)
+          const parsedDisplay = formatQuantityAndUnit(parsed.quantity, parsed.unit)
+          existing.name = `${existingDisplay} + ${parsedDisplay} ${baseIngredientName}`
+          existing.quantity = undefined
+          existing.unit = undefined
         } else if (parsed.quantity && !existing.quantity) {
           // New item has quantity, existing doesn't - use the more specific one
           existing.quantity = parsed.quantity
