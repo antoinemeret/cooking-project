@@ -30,11 +30,11 @@ export function parseIngredient(ingredientText: string): ParsedIngredient {
     /^(\d+(?:\.\d+)?)([a-zA-Z]+)\s+(?:de?\s+|d')?(.+)$/,
     // "2 cups flour", "1.5 tbsp olive oil" (explicit units)
     /^(\d+(?:\.\d+)?)\s+(cups?|tbsp|tablespoons?|tsp|teaspoons?|ml|milliliters?|l|liters?|litres?|g|grams?|grammes?|kg|kilograms?|kilogrammes?|oz|ounces?|lb|pounds?|cl|centilitres?|dl|décilitres?)\s+(?:de?\s+|d')?(.+)$/i,
-    // "2 large eggs", "1 medium onion" (size descriptors as units)
-    /^(\d+(?:\.\d+)?)\s+(large|medium|small|whole|gros|grosse|moyen|moyenne|petit|petite)\s+(.+)$/,
+    // "2 large eggs", "1 medium onion", "4 petites gousses" (size descriptors as units)
+    /^(\d+(?:\.\d+)?)\s+(large|medium|small|whole|gros|grosse|moyen|moyenne|petit|petite|petits|petites)\s+(.+)$/,
     // "1/2 cup sugar", "3/4 tsp salt", "1/2 c. à s. d'huile"
-    /^(\d+\/\d+)\s+(c\.\s*à\s*s\.|cuil\.\s*à\s*soupe|c\.à\.s\.|cas|c\.\s*à\s*c\.|cuil\.\s*à\s*café|c\.à\.c\.|cac|cups?|tbsp|tablespoons?|tsp|teaspoons?|ml|milliliters?|l|liters?|litres?|g|grams?|grammes?|kg|kilograms?|kilogrammes?|oz|ounces?|lb|pounds?|cl|centilitres?|dl|décilitres?)\s+(?:de?\s+|d')?(.+)$/i,
-    // "2 Tomates", "3 oeufs" (standalone numbers without units) - MUST BE LAST
+    /^(\d+\/\d+)\s+(c\.\s*à\s*s\.|cuil\.\s*à\s*soupe|c\.à\.s\.|cas|c\.\s*à\s*c\.|cuil\.\s*à\s*café|c\.à\.c\.|cac|cups?|tbsp|tablespoons?|tsp|teaspoons?|ml|milliliters?|l|liters?|litres?|g|grams?|grammes?|kg|kilograms?|kilogrammes?|oz|ounces?|lb|pounds?|cl|centilitres?|dl|décilitres?|large|medium|small|whole|gros|grosse|moyen|moyenne|petit|petite|petits|petites)\s+(?:de?\s+|d')?(.+)$/i,
+    // "2 Tomates", "3 oeufs", "4 oignons" (standalone numbers without units) - MUST BE LAST
     /^(\d+(?:\.\d+)?)\s+(.+)$/,
   ]
   
@@ -377,7 +377,7 @@ export function normalizeUnit(unit: string): string {
     'large': 'large', 'medium': 'medium', 'small': 'small',
     'gros': 'large', 'grosse': 'large', 
     'moyen': 'medium', 'moyenne': 'medium',
-    'petit': 'small', 'petite': 'small'
+    'petit': 'small', 'petite': 'small', 'petits': 'small', 'petites': 'small'
   }
   
   // Clean the unit string and normalize
