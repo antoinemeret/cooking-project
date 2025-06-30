@@ -230,18 +230,31 @@ function formatQuantityAndUnit(quantity?: number, unit?: string, name?: string):
  * Get the best representative name for merged ingredients
  */
 function getBaseIngredientName(name1: string, name2: string): string {
-  // Choose the more descriptive name (longer one usually has more info)
-  // But prefer the one that's more commonly used
-  const base1 = extractBaseIngredient(normalizeIngredientName(name1))
-  const base2 = extractBaseIngredient(normalizeIngredientName(name2))
+  // Extract clean ingredient names without quantities
+  const clean1 = cleanIngredientName(name1)
+  const clean2 = cleanIngredientName(name2)
+  
+  const base1 = extractBaseIngredient(normalizeIngredientName(clean1))
+  const base2 = extractBaseIngredient(normalizeIngredientName(clean2))
   
   // If they have the same base, choose the more descriptive original name
   if (base1 === base2) {
-    return name1.length >= name2.length ? name1 : name2
+    return clean1.length >= clean2.length ? clean1 : clean2
   }
   
   // Otherwise, use the first one
-  return name1
+  return clean1
+}
+
+/**
+ * Clean ingredient name by removing any embedded quantities/units
+ */
+function cleanIngredientName(name: string): string {
+  // Remove patterns like "500 grammes" or "2" from the beginning of ingredient names
+  return name
+    .replace(/^\d+(?:\.\d+)?\s*[a-zA-Z]*\s+/g, '') // Remove "500 grammes " or "2 "
+    .replace(/^\d+(?:\.\d+)?\s+/g, '') // Remove standalone numbers
+    .trim()
 }
 
 /**
@@ -428,7 +441,8 @@ export function aggregateIngredients(recipes: Array<{
 export function formatIngredientForDisplay(ingredient: AggregatedIngredient): string {
   let display = ingredient.name
   
-  if (ingredient.quantity && ingredient.unit) {
+  // Only prepend quantity and unit if we have both and the name doesn't already include them
+  if (ingredient.quantity && ingredient.unit && !ingredient.name.includes('+')) {
     display = `${ingredient.quantity} ${ingredient.unit} ${ingredient.name}`
   }
   
