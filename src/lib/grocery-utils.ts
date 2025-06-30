@@ -22,14 +22,14 @@ export function parseIngredient(ingredientText: string): ParsedIngredient {
   
   // Common patterns for quantities and units
   const patterns = [
-    // "2 cups flour", "1.5 tbsp olive oil"
-    /^(\d+(?:\.\d+)?)\s+([a-zA-Z]+)\s+(.+)$/,
+    // "2 cups flour", "1.5 tbsp olive oil", "4 cuil. à soupe de coriandre"
+    /^(\d+(?:\.\d+)?)\s+([a-zA-Z.àé]+(?:\s+à\s+[a-zA-Z]+)?)\s+(?:de\s+)?(.+)$/,
     // "2 large eggs", "1 medium onion"
-    /^(\d+(?:\.\d+)?)\s+(large|medium|small|whole)\s+(.+)$/,
-    // "500g flour", "2kg chicken"
-    /^(\d+(?:\.\d+)?)([a-zA-Z]+)\s+(.+)$/,
+    /^(\d+(?:\.\d+)?)\s+(large|medium|small|whole|gros|grosse|moyen|moyenne|petit|petite)\s+(.+)$/,
+    // "500g flour", "2kg chicken", "500 grammes de"
+    /^(\d+(?:\.\d+)?)([a-zA-Z]+)\s+(?:de\s+)?(.+)$/,
     // "1/2 cup sugar", "3/4 tsp salt"
-    /^(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
+    /^(\d+\/\d+)\s+([a-zA-Z.àé]+(?:\s+à\s+[a-zA-Z]+)?)\s+(?:de\s+)?(.+)$/,
   ]
   
   for (const pattern of patterns) {
@@ -46,8 +46,11 @@ export function parseIngredient(ingredientText: string): ParsedIngredient {
         quantity = parseFloat(quantityStr)
       }
       
+      // Clean the ingredient name by removing preparation instructions
+      const cleanedName = removePreparationInstructions(name.trim())
+      
       return {
-        name: name.trim(),
+        name: cleanedName,
         quantity,
         unit: unit.toLowerCase(),
         originalText: text
@@ -55,11 +58,74 @@ export function parseIngredient(ingredientText: string): ParsedIngredient {
     }
   }
   
-  // If no pattern matches, treat entire text as ingredient name
+  // If no pattern matches, clean the entire text and treat as ingredient name
+  const cleanedText = removePreparationInstructions(text)
   return {
-    name: text,
+    name: cleanedText,
     originalText: text
   }
+}
+
+/**
+ * Remove preparation instructions from ingredient names
+ */
+function removePreparationInstructions(ingredientName: string): string {
+  let cleaned = ingredientName
+  
+  // Common preparation instruction patterns to remove
+  const preparationPatterns = [
+    // French preparation instructions
+    /\s*ciselée?\s+en\s+morceaux\s+irréguliers/gi,
+    /\s*ciselée?\s+en\s+morceaux/gi,
+    /\s*ciselée?\s*/gi,
+    /\s*hachée?\s*/gi,
+    /\s*émincée?\s*/gi,
+    /\s*coupée?\s+en\s+dés/gi,
+    /\s*coupée?\s+en\s+lamelles/gi,
+    /\s*coupée?\s+en\s+tranches/gi,
+    /\s*coupée?\s+en\s+deux/gi,
+    /\s*épépinée?\s*/gi,
+    /\s*pelée?\s*/gi,
+    /\s*écrasée?\s*/gi,
+    /\s*râpée?\s*/gi,
+    /\s*finement\s+hachée?/gi,
+    /\s*grossièrement\s+hachée?/gi,
+    
+    // English preparation instructions
+    /\s*chopped\s+into\s+irregular\s+pieces/gi,
+    /\s*chopped\s+finely/gi,
+    /\s*finely\s+chopped/gi,
+    /\s*roughly\s+chopped/gi,
+    /\s*coarsely\s+chopped/gi,
+    /\s*chopped/gi,
+    /\s*diced/gi,
+    /\s*sliced/gi,
+    /\s*minced/gi,
+    /\s*grated/gi,
+    /\s*peeled/gi,
+    /\s*seeded/gi,
+    /\s*crushed/gi,
+    /\s*julienned/gi,
+    
+    // Cooking state instructions
+    /\s*\(.*\)/gi, // Remove anything in parentheses
+    /\s*,\s*.*$/gi, // Remove everything after first comma (often preparation notes)
+  ]
+  
+  // Apply all patterns
+  for (const pattern of preparationPatterns) {
+    cleaned = cleaned.replace(pattern, '')
+  }
+  
+  // Clean up extra spaces and trim
+  cleaned = cleaned.replace(/\s+/g, ' ').trim()
+  
+  // If we removed too much and left nothing meaningful, return original
+  if (cleaned.length < 3) {
+    return ingredientName
+  }
+  
+  return cleaned
 }
 
 /**
