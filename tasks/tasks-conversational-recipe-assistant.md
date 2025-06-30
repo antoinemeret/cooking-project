@@ -100,7 +100,7 @@ Implementation of AI-powered conversational meal planning assistant with Claude 
 
 #### 5.1 Planner Interface
 - [x] Create `/planner` page with meal plan overview
-- [x] Display accepted recipes in organized list format (using card-based layout instead of data table) 
+- [x] Display accepted recipes in organized list format (using card-based layout instead of data table)
 - [x] Add checkboxes for marking meals as completed
 - [x] Implement recipe removal from current plan
 

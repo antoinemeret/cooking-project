@@ -152,8 +152,12 @@ export function normalizeIngredientName(name: string): string {
  * Check if two ingredients are likely the same item
  */
 export function areIngredientsSimilar(name1: string, name2: string): boolean {
-  const normalized1 = normalizeIngredientName(name1)
-  const normalized2 = normalizeIngredientName(name2)
+  // Extract base ingredient names, handling "+" notation
+  const baseName1 = extractBaseIngredientFromCombined(name1)
+  const baseName2 = extractBaseIngredientFromCombined(name2)
+  
+  const normalized1 = normalizeIngredientName(baseName1)
+  const normalized2 = normalizeIngredientName(baseName2)
   
   // Exact match
   if (normalized1 === normalized2) return true
@@ -217,6 +221,26 @@ export function areIngredientsSimilar(name1: string, name2: string): boolean {
   }
   
   return false
+}
+
+/**
+ * Extract base ingredient name from combined ingredients (handles "+" notation)
+ */
+function extractBaseIngredientFromCombined(name: string): string {
+  // If the name contains "+", extract the ingredient name after the quantities
+  if (name.includes('+')) {
+    // Pattern: "500 grammes + 2 Tomates" -> extract "Tomates"
+    const match = name.match(/\+\s*\d+(?:\.\d+)?\s*(?:[a-zA-Z]+\s+)?(.+)$/)
+    if (match) {
+      return match[1].trim()
+    }
+    
+    // Fallback: take everything after the last "+" and remove leading quantities/units
+    const afterPlus = name.split('+').pop()?.trim() || name
+    return afterPlus.replace(/^\d+(?:\.\d+)?\s*(?:[a-zA-Z]+\s+)?/, '').trim()
+  }
+  
+  return name
 }
 
 /**
@@ -411,6 +435,26 @@ export function aggregateIngredients(recipes: Array<{
           existing.name = `${existingDisplay} + ${parsedDisplay} ${baseIngredientName}`
           existing.quantity = undefined
           existing.unit = undefined
+        } else if (existing.name.includes('+') && parsed.quantity) {
+          // Existing is already a combined ingredient, add the new quantity
+          const baseIngredientName = getBaseIngredientName(existing.name, parsed.name)
+          const parsedDisplay = formatQuantityAndUnit(parsed.quantity, parsed.unit)
+          
+          // Extract existing combined quantities and add the new one
+          if (parsed.unit) {
+            existing.name = `${existing.name} + ${parsedDisplay}`
+          } else {
+            // For quantities without units, try to combine with similar quantities
+            const quantityMatch = existing.name.match(/(\d+(?:\.\d+)?)\s*(?:\+|$)/)
+            if (quantityMatch && !existing.name.includes(quantityMatch[1] + ' ')) {
+              // There's a standalone quantity we can combine with
+              const existingQuantity = parseFloat(quantityMatch[1])
+              const newTotal = existingQuantity + parsed.quantity
+              existing.name = existing.name.replace(quantityMatch[1], newTotal.toString())
+            } else {
+              existing.name = `${existing.name} + ${parsedDisplay}`
+            }
+          }
         } else if (parsed.quantity && !existing.quantity) {
           // New item has quantity, existing doesn't - use the more specific one
           existing.quantity = parsed.quantity
