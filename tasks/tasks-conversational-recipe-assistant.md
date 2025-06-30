@@ -124,15 +124,15 @@ Implementation of AI-powered conversational meal planning assistant with Claude 
 - [x] Implement duplicate ingredient detection and quantity merging
 - [x] Handle unit conversion and standardization
 
-#### 6.2 Grocery Interface
-- [ ] Create `/groceries` page with simple ingredient list
-- [ ] Add checkboxes for marking items as purchased
-- [ ] Add total item count and completion progress
+#### 6.2 Grocery Interface ✅
+- [x] Create `/groceries` page with simple ingredient list
+- [x] Add checkboxes for marking items as purchased
+- [x] Add total item count and completion progress
 
-#### 6.3 Shopping Experience
-- [ ] Add search functionality for finding specific ingredients
-- [ ] Implement persistence for checked items
-- [ ] Create clear visual distinction for completed items
+#### 6.3 Shopping Experience ✅
+- [x] Add search functionality for finding specific ingredients
+- [x] Implement persistence for checked items
+- [x] Create clear visual distinction for completed items
 
 ### 🔄 **Task 7: Session & State Management** (Week 7-8)
 **Priority: High** | **Dependencies: Tasks 2-6**
