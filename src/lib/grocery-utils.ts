@@ -22,14 +22,18 @@ export function parseIngredient(ingredientText: string): ParsedIngredient {
   
   // Common patterns for quantities and units
   const patterns = [
-    // "2 cups flour", "1.5 tbsp olive oil", "4 cuil. à soupe de coriandre"
-    /^(\d+(?:\.\d+)?)\s+([a-zA-Z.àé]+(?:\s+à\s+[a-zA-Z]+)?)\s+(?:de\s+)?(.+)$/,
+    // "3 c. à s. d'huile d'olive", "4 cuil. à soupe de coriandre"
+    /^(\d+(?:\.\d+)?)\s+(c\.\s*à\s*s\.|cuil\.\s*à\s*soupe|c\.à\.s\.|cas)\s+(?:de?\s+|d')?(.+)$/i,
+    // "1 c. à c. de sel", "2 cuil. à café de vanille"  
+    /^(\d+(?:\.\d+)?)\s+(c\.\s*à\s*c\.|cuil\.\s*à\s*café|c\.à\.c\.|cac)\s+(?:de?\s+|d')?(.+)$/i,
+    // "2 cups flour", "1.5 tbsp olive oil"
+    /^(\d+(?:\.\d+)?)\s+([a-zA-Z.àé]+(?:\s+à\s+[a-zA-Z]+)?)\s+(?:de?\s+|d')?(.+)$/,
     // "2 large eggs", "1 medium onion"
     /^(\d+(?:\.\d+)?)\s+(large|medium|small|whole|gros|grosse|moyen|moyenne|petit|petite)\s+(.+)$/,
     // "500g flour", "2kg chicken", "500 grammes de"
-    /^(\d+(?:\.\d+)?)([a-zA-Z]+)\s+(?:de\s+)?(.+)$/,
-    // "1/2 cup sugar", "3/4 tsp salt"
-    /^(\d+\/\d+)\s+([a-zA-Z.àé]+(?:\s+à\s+[a-zA-Z]+)?)\s+(?:de\s+)?(.+)$/,
+    /^(\d+(?:\.\d+)?)([a-zA-Z]+)\s+(?:de?\s+|d')?(.+)$/,
+    // "1/2 cup sugar", "3/4 tsp salt", "1/2 c. à s. d'huile"
+    /^(\d+\/\d+)\s+(c\.\s*à\s*s\.|cuil\.\s*à\s*soupe|c\.à\.s\.|cas|c\.\s*à\s*c\.|cuil\.\s*à\s*café|c\.à\.c\.|cac|[a-zA-Z.àé]+(?:\s+à\s+[a-zA-Z]+)?)\s+(?:de?\s+|d')?(.+)$/i,
   ]
   
   for (const pattern of patterns) {
@@ -273,26 +277,43 @@ function extractBaseIngredient(normalizedName: string): string {
  */
 export function normalizeUnit(unit: string): string {
   const unitMap: Record<string, string> = {
-    // Volume
+    // Volume - English
     'cup': 'cup', 'cups': 'cup',
     'tbsp': 'tbsp', 'tablespoon': 'tbsp', 'tablespoons': 'tbsp',
     'tsp': 'tsp', 'teaspoon': 'tsp', 'teaspoons': 'tsp',
     'ml': 'ml', 'milliliter': 'ml', 'milliliters': 'ml',
     'l': 'l', 'liter': 'l', 'liters': 'l', 'litre': 'l', 'litres': 'l',
     
-    // Weight
-    'g': 'g', 'gram': 'g', 'grams': 'g', 'gramme': 'g', 'grammes': 'g',
+    // Volume - French
+    'cuil. à soupe': 'tbsp', 'cuillère à soupe': 'tbsp', 'cuillères à soupe': 'tbsp',
+    'c. à s.': 'tbsp', 'c.à.s.': 'tbsp', 'cas': 'tbsp',
+    'cuil. à café': 'tsp', 'cuillère à café': 'tsp', 'cuillères à café': 'tsp', 
+    'c. à c.': 'tsp', 'c.à.c.': 'tsp', 'cac': 'tsp',
+    'cl': 'cl', 'centilitre': 'cl', 'centilitres': 'cl',
+    'dl': 'dl', 'décilitre': 'dl', 'décilitres': 'dl',
+    
+    // Weight - English
+    'g': 'g', 'gram': 'g', 'grams': 'g', 
     'kg': 'kg', 'kilogram': 'kg', 'kilograms': 'kg',
     'oz': 'oz', 'ounce': 'oz', 'ounces': 'oz',
     'lb': 'lb', 'pound': 'lb', 'pounds': 'lb',
     
+    // Weight - French
+    'gramme': 'g', 'grammes': 'g',
+    'kilogramme': 'kg', 'kilogrammes': 'kg',
+    
     // Count
     'piece': 'piece', 'pieces': 'piece',
-    'whole': 'whole',
-    'large': 'large', 'medium': 'medium', 'small': 'small'
+    'whole': 'whole', 'entier': 'whole', 'entière': 'whole',
+    'large': 'large', 'medium': 'medium', 'small': 'small',
+    'gros': 'large', 'grosse': 'large', 
+    'moyen': 'medium', 'moyenne': 'medium',
+    'petit': 'small', 'petite': 'small'
   }
   
-  return unitMap[unit.toLowerCase()] || unit.toLowerCase()
+  // Clean the unit string and normalize
+  const cleanedUnit = unit.toLowerCase().trim()
+  return unitMap[cleanedUnit] || cleanedUnit
 }
 
 /**
