@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
-import { RefreshCw, Search, ShoppingCart, Trash2, CheckCircle2 } from 'lucide-react'
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { RefreshCw, Search, ShoppingCart, Trash2, CheckCircle2, Clock, Star } from 'lucide-react'
 import { formatIngredientForDisplay } from '@/lib/grocery-utils'
+import { cn } from '@/lib/utils'
 
 interface AggregatedIngredient {
   name: string
@@ -35,6 +37,9 @@ export default function GroceriesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [isUpdating, setIsUpdating] = useState(false)
   const [isClearing, setIsClearing] = useState(false)
+  const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null)
+  const [fullRecipeDetails, setFullRecipeDetails] = useState<any | null>(null)
+  const [loadingRecipeDetails, setLoadingRecipeDetails] = useState(false)
 
   // Mock user ID for development
   const userId = 'user123'
@@ -64,6 +69,23 @@ export default function GroceriesPage() {
     } finally {
       console.log('Setting loading to false')
       setLoading(false)
+    }
+  }
+
+  const fetchFullRecipeDetails = async (recipeTitle: string) => {
+    setLoadingRecipeDetails(true)
+    try {
+      const response = await fetch(`/api/recipes/list`)
+      if (response.ok) {
+        const data = await response.json()
+        const fullRecipe = data.recipes.find((r: any) => r.title === recipeTitle)
+        setFullRecipeDetails(fullRecipe || null)
+      }
+    } catch (error) {
+      console.error('Error fetching recipe details:', error)
+      setFullRecipeDetails(null)
+    } finally {
+      setLoadingRecipeDetails(false)
     }
   }
 
@@ -335,9 +357,21 @@ export default function GroceriesPage() {
                         {formatIngredientForDisplay(ingredient)}
                       </p>
                       {ingredient.sources.length > 0 && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          From: {ingredient.sources.join(', ')}
-                        </p>
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {ingredient.sources.map((source, sourceIndex) => (
+                            <button
+                              key={sourceIndex}
+                              onClick={() => {
+                                setSelectedRecipe({ title: source })
+                                setFullRecipeDetails(null)
+                                fetchFullRecipeDetails(source)
+                              }}
+                              className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                            >
+                              {source}
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -370,9 +404,21 @@ export default function GroceriesPage() {
                         {formatIngredientForDisplay(ingredient)}
                       </p>
                       {ingredient.sources.length > 0 && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          From: {ingredient.sources.join(', ')}
-                        </p>
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {ingredient.sources.map((source, sourceIndex) => (
+                            <button
+                              key={sourceIndex}
+                              onClick={() => {
+                                setSelectedRecipe({ title: source })
+                                setFullRecipeDetails(null)
+                                fetchFullRecipeDetails(source)
+                              }}
+                              className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+                            >
+                              {source}
+                            </button>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -392,6 +438,112 @@ export default function GroceriesPage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Recipe Details Sheet */}
+      {selectedRecipe && (
+        <Sheet open={selectedRecipe !== null} onOpenChange={(open) => {
+          if (!open) setSelectedRecipe(null)
+        }}>
+          <SheetContent className="w-[90%] sm:w-[50%] min-w-[320px] p-4 sm:p-6 flex flex-col gap-4 sm:gap-6">
+            <SheetHeader>
+              <SheetTitle className="text-xl sm:text-2xl font-bold">{selectedRecipe?.title}</SheetTitle>
+            </SheetHeader>
+            <div className="flex flex-col gap-4 overflow-y-auto">
+              {loadingRecipeDetails ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                  <span className="ml-2 text-sm text-muted-foreground">Loading recipe details...</span>
+                </div>
+              ) : fullRecipeDetails ? (
+                <>
+                  {/* Recipe Meta */}
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    {fullRecipeDetails.time > 0 && (
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-4 w-4" />
+                        <span>{fullRecipeDetails.time} min</span>
+                      </div>
+                    )}
+                    {fullRecipeDetails.grade > 0 && (
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: 3 }, (_, i) => (
+                          <Star
+                            key={i}
+                            className={cn(
+                              "h-4 w-4",
+                              i < fullRecipeDetails.grade ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
+                            )}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1">
+                      <span>🍽️ Serves 4</span>
+                    </div>
+                  </div>
+
+                  {/* Recipe Summary */}
+                  {fullRecipeDetails.summary && (
+                    <div>
+                      <h2 className="text-lg font-semibold mb-2">Description</h2>
+                      <p className="text-muted-foreground leading-relaxed">{fullRecipeDetails.summary}</p>
+                    </div>
+                  )}
+
+                  {/* Tags */}
+                  {fullRecipeDetails.tags && (() => {
+                    try {
+                      const tags = JSON.parse(fullRecipeDetails.tags)
+                      if (tags.length > 0) {
+                        return (
+                          <div>
+                            <h2 className="text-lg font-semibold mb-2">Tags</h2>
+                            <div className="flex flex-wrap gap-2">
+                              {tags.map((tag: string, index: number) => (
+                                <span
+                                  key={index}
+                                  className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-secondary text-secondary-foreground"
+                                >
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      }
+                    } catch {
+                      return null
+                    }
+                    return null
+                  })()}
+
+                  {/* Ingredients */}
+                  <div>
+                    <h2 className="text-lg font-semibold mb-2">Ingredients</h2>
+                    <ul className="list-disc list-inside pl-4 space-y-1">
+                      {fullRecipeDetails.rawIngredients && JSON.parse(fullRecipeDetails.rawIngredients).map((ingredient: string, index: number) => (
+                        <li key={index} className="text-sm">{ingredient}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* Instructions */}
+                  <div>
+                    <h2 className="text-lg font-semibold mb-2">Instructions</h2>
+                    <p className="whitespace-pre-line text-sm leading-relaxed">{fullRecipeDetails.instructions}</p>
+                  </div>
+                </>
+              ) : (
+                <div className="bg-muted/50 rounded-lg p-4">
+                  <p className="text-sm text-muted-foreground">
+                    ⚠️ Could not load recipe details. Please try again.
+                  </p>
+                </div>
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
       )}
     </div>
   )

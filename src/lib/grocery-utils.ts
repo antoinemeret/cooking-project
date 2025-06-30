@@ -34,6 +34,8 @@ export function parseIngredient(ingredientText: string): ParsedIngredient {
     /^(\d+(?:\.\d+)?)([a-zA-Z]+)\s+(?:de?\s+|d')?(.+)$/,
     // "1/2 cup sugar", "3/4 tsp salt", "1/2 c. à s. d'huile"
     /^(\d+\/\d+)\s+(c\.\s*à\s*s\.|cuil\.\s*à\s*soupe|c\.à\.s\.|cas|c\.\s*à\s*c\.|cuil\.\s*à\s*café|c\.à\.c\.|cac|[a-zA-Z.àé]+(?:\s+à\s+[a-zA-Z]+)?)\s+(?:de?\s+|d')?(.+)$/i,
+    // "2 Tomates", "3 oeufs" (standalone numbers without units)
+    /^(\d+(?:\.\d+)?)\s+(.+)$/,
   ]
   
   for (const pattern of patterns) {
@@ -51,12 +53,15 @@ export function parseIngredient(ingredientText: string): ParsedIngredient {
       }
       
       // Clean the ingredient name by removing preparation instructions
-      const cleanedName = removePreparationInstructions(name.trim())
+      const cleanedName = removePreparationInstructions((name || unit).trim())
+      
+      // For standalone numbers (last pattern), unit is actually the name
+      const finalUnit = name ? unit.toLowerCase() : undefined
       
       return {
         name: cleanedName,
         quantity,
-        unit: unit.toLowerCase(),
+        unit: finalUnit,
         originalText: text
       }
     }
