@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, KeyboardEvent, useCallback, useMemo } from "react"
 import { MessageBubble, Message } from "./MessageBubble"
 import { RecipeCard, RecipeSuggestion } from "./RecipeCard"
 import { ChatInput } from "./ChatInput"
@@ -8,6 +8,8 @@ import { TypingIndicator } from "./TypingIndicator"
 import { Button } from "@/components/ui/button"
 import { RefreshCw, AlertCircle, Clock, RotateCcw } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { OnboardingTips } from "./OnboardingTips"
+import { trackConversationStart, trackRecipeAction, analytics } from "@/lib/analytics"
 
 interface ChatInterfaceProps {
   className?: string
@@ -37,6 +39,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
   const [showTimeoutWarning, setShowTimeoutWarning] = useState(false)
   const [isOnline, setIsOnline] = useState(true)
   const [requestTimeout, setRequestTimeout] = useState<NodeJS.Timeout | null>(null)
+  const [showOnboarding, setShowOnboarding] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const timeoutCheckInterval = useRef<NodeJS.Timeout | null>(null)
   const userId = 'user123' // TODO: Replace with actual user ID
@@ -181,8 +184,112 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     }, 30000) // Check every 30 seconds
   }
 
-  const sendMessage = async (userInput: string) => {
+  // Memoized callbacks to prevent unnecessary re-renders
+  const handleRecipeAcceptMemo = useCallback(async (recipeId: number) => {
     if (!session) return
+
+    try {
+      const response = await fetch('/api/assistant/recipe-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: session.sessionId,
+          recipeId,
+          action: 'accept',
+          userId
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to accept recipe')
+      }
+
+      const data = await response.json()
+      
+      // Add AI response about the acceptance
+      const aiMessage: Message = {
+        role: 'assistant',
+        content: data.aiResponse,
+        timestamp: new Date()
+      }
+
+      setSession(prev => prev ? {
+        ...prev,
+        messages: [...prev.messages, aiMessage],
+        suggestedRecipes: prev.suggestedRecipes.filter(s => s.recipe.id !== recipeId)
+      } : null)
+
+      // Track recipe acceptance
+      trackRecipeAction('accept', recipeId)
+
+    } catch (error) {
+      console.error('Failed to accept recipe:', error)
+      setSession(prev => prev ? {
+        ...prev,
+        error: 'Failed to accept recipe. Please try again.'
+      } : null)
+    }
+  }, [session?.sessionId, userId])
+
+  const handleRecipeDeclineMemo = useCallback(async (recipeId: number, reason?: string) => {
+    if (!session) return
+
+    try {
+      const response = await fetch('/api/assistant/recipe-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: session.sessionId,
+          recipeId,
+          action: 'decline',
+          reason,
+          userId
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to decline recipe')
+      }
+
+      const data = await response.json()
+      
+      // Add AI response about the decline
+      const aiMessage: Message = {
+        role: 'assistant',
+        content: data.aiResponse,
+        timestamp: new Date()
+      }
+
+      setSession(prev => prev ? {
+        ...prev,
+        messages: [...prev.messages, aiMessage],
+        // Remove the declined recipe and add new suggestions if any
+        suggestedRecipes: [
+          ...prev.suggestedRecipes.filter(s => s.recipe.id !== recipeId),
+          ...(data.suggestedRecipes || [])
+        ]
+      } : null)
+
+      // Track recipe decline with reason
+      trackRecipeAction('decline', recipeId, reason)
+
+    } catch (error) {
+      console.error('Failed to decline recipe:', error)
+      setSession(prev => prev ? {
+        ...prev,
+        error: 'Failed to decline recipe. Please try again.'
+      } : null)
+    }
+  }, [session?.sessionId, userId])
+
+  const sendMessageMemo = useCallback(async (userInput: string) => {
+    if (!session) return
+
+    // Track conversation start if this is the first user message
+    const isFirstMessage = session.messages.length === 1 && session.messages[0].role === 'assistant'
+    if (isFirstMessage) {
+      trackConversationStart()
+    }
 
     // Check if offline
     if (!isOnline) {
@@ -245,7 +352,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         clearStoredSessionId()
         await initializeSession(true)
         // Retry the message after reinitializing
-        return sendMessage(userInput)
+        return sendMessageMemo(userInput)
       }
 
       if (!response.ok) {
@@ -312,98 +419,58 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         hasNetworkError: isNetworkError
       } : null)
     }
-  }
+  }, [session?.sessionId, userId, isOnline, clearStoredSessionId, initializeSession])
 
-  const handleRecipeAccept = async (recipeId: number) => {
-    if (!session) return
+  // Memoized conversation starters to prevent re-creation
+  const conversationStarters = useMemo(() => [
+    "I need 3 quick dinners for this week",
+    "What vegetarian meals can I make?",
+    "I have chicken and want something healthy",
+    "Plan my meals for the weekend",
+    "I want to use up my tomatoes and basil",
+    "Something quick for busy weeknights"
+  ], [])
 
-    try {
-      const response = await fetch('/api/assistant/recipe-action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: session.sessionId,
-          recipeId,
-          action: 'accept',
-          userId
-        })
-      })
+  // Memoized message rendering with virtualization for large message lists
+  const messageElements = useMemo(() => {
+    if (!session?.messages) return []
+    
+    // For performance, limit displayed messages to last 50 if there are many
+    const messagesToShow = session.messages.length > 50 
+      ? session.messages.slice(-50) 
+      : session.messages
+    
+    return messagesToShow.map((message, index) => (
+      <MessageBubble key={`${message.timestamp.getTime()}-${index}`} message={message} />
+    ))
+  }, [session?.messages])
 
-      if (!response.ok) {
-        throw new Error('Failed to accept recipe')
-      }
+  // Memoized recipe cards to prevent unnecessary re-renders
+  const recipeElements = useMemo(() => {
+    if (!session?.suggestedRecipes?.length) return null
+    
+    return (
+      <div className="space-y-3">
+        <div className="text-sm font-medium text-muted-foreground px-2">
+          Recipe Suggestions:
+        </div>
+        {session.suggestedRecipes.map((suggestion, index) => (
+          <RecipeCard
+            key={`${suggestion.recipe.id}-${index}`}
+            suggestion={suggestion}
+            onAccept={handleRecipeAcceptMemo}
+            onDecline={handleRecipeDeclineMemo}
+            disabled={session.isTyping}
+          />
+        ))}
+      </div>
+    )
+  }, [session?.suggestedRecipes, session?.isTyping, handleRecipeAcceptMemo, handleRecipeDeclineMemo])
 
-      const data = await response.json()
-      
-      // Add AI response about the acceptance
-      const aiMessage: Message = {
-        role: 'assistant',
-        content: data.aiResponse,
-        timestamp: new Date()
-      }
-
-      setSession(prev => prev ? {
-        ...prev,
-        messages: [...prev.messages, aiMessage],
-        suggestedRecipes: prev.suggestedRecipes.filter(s => s.recipe.id !== recipeId)
-      } : null)
-
-    } catch (error) {
-      console.error('Failed to accept recipe:', error)
-      setSession(prev => prev ? {
-        ...prev,
-        error: 'Failed to accept recipe. Please try again.'
-      } : null)
-    }
-  }
-
-  const handleRecipeDecline = async (recipeId: number, reason?: string) => {
-    if (!session) return
-
-    try {
-      const response = await fetch('/api/assistant/recipe-action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: session.sessionId,
-          recipeId,
-          action: 'decline',
-          reason,
-          userId
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to decline recipe')
-      }
-
-      const data = await response.json()
-      
-      // Add AI response about the decline
-      const aiMessage: Message = {
-        role: 'assistant',
-        content: data.aiResponse,
-        timestamp: new Date()
-      }
-
-      setSession(prev => prev ? {
-        ...prev,
-        messages: [...prev.messages, aiMessage],
-        // Remove the declined recipe and add new suggestions if any
-        suggestedRecipes: [
-          ...prev.suggestedRecipes.filter(s => s.recipe.id !== recipeId),
-          ...(data.suggestedRecipes || [])
-        ]
-      } : null)
-
-    } catch (error) {
-      console.error('Failed to decline recipe:', error)
-      setSession(prev => prev ? {
-        ...prev,
-        error: 'Failed to decline recipe. Please try again.'
-      } : null)
-    }
-  }
+  // Remove the old handler functions and replace with memoized versions
+  const handleRecipeAccept = handleRecipeAcceptMemo
+  const handleRecipeDecline = handleRecipeDeclineMemo
+  const sendMessage = sendMessageMemo
 
   const resetConversation = () => {
     clearStoredSessionId()
@@ -462,6 +529,23 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     return () => {
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  // Check if user is first-time visitor
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hasSeenOnboarding = localStorage.getItem('hasSeenOnboarding')
+      if (!hasSeenOnboarding) {
+        setShowOnboarding(true)
+      }
+    }
+  }, [])
+
+  const dismissOnboarding = useCallback(() => {
+    setShowOnboarding(false)
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('hasSeenOnboarding', 'true')
     }
   }, [])
 
@@ -569,30 +653,18 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         </Button>
       </div>
 
-      {/* Messages Area */}
+      {/* Main Chat Area */}
       <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4 md:space-y-6">
+        {/* Onboarding Tips */}
+        {showOnboarding && (
+          <OnboardingTips onDismiss={dismissOnboarding} />
+        )}
+
         {/* Messages */}
-        {session.messages.map((message, index) => (
-          <MessageBubble key={index} message={message} />
-        ))}
+        {messageElements}
 
         {/* Recipe Suggestions */}
-        {session.suggestedRecipes.length > 0 && (
-          <div className="space-y-3">
-            <div className="text-sm font-medium text-muted-foreground px-2">
-              Recipe Suggestions:
-            </div>
-            {session.suggestedRecipes.map((suggestion, index) => (
-              <RecipeCard
-                key={`${suggestion.recipe.id}-${index}`}
-                suggestion={suggestion}
-                onAccept={handleRecipeAccept}
-                onDecline={handleRecipeDecline}
-                disabled={session.isTyping}
-              />
-            ))}
-          </div>
-        )}
+        {recipeElements}
 
         {/* Typing Indicator */}
         {session.isTyping && <TypingIndicator />}
@@ -620,12 +692,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         <div className="p-3 sm:p-4 md:p-6 border-t bg-muted/30">
           <p className="text-xs sm:text-sm md:text-base text-muted-foreground mb-2 md:mb-3">Try asking:</p>
           <div className="flex flex-wrap gap-1.5 sm:gap-2 md:gap-3">
-            {[
-              "I need 3 quick dinners for this week",
-              "What vegetarian meals can I make?",
-              "I have chicken and want something healthy",
-              "Plan my meals for the weekend"
-            ].map((starter, index) => (
+            {conversationStarters.map((starter, index) => (
               <Button
                 key={index}
                 variant="outline"

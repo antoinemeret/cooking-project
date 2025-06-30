@@ -1,312 +1,231 @@
+/**
+ * Enhanced recipe tags backfill script
+ * Analyzes recipe titles, summaries, and ingredients to automatically assign relevant tags
+ */
+
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-// Tag detection patterns
-const TAG_PATTERNS = {
+// Enhanced tag patterns for better detection
+const tagPatterns = {
   // Dietary restrictions
   vegetarian: [
-    /\bvegetarian\b/i,
-    /\bveggie\b/i,
-    /no meat/i,
-    /without meat/i
+    /\b(vegetarian|veggie|légumes|légume|tomate|courgette|aubergine|poivron|salade|quinoa|avocats?|fèves?|haricots?)\b/i,
+    /\b(pasta|risotto|tarte|ratatouille|noisettes?|herbes?|feta|oseille|sumac)\b/i,
+    /\b(no meat|sans viande|végétarien)\b/i
   ],
   vegan: [
-    /\bvegan\b/i,
-    /plant.based/i,
-    /dairy.free.*egg.free/i
+    /\b(vegan|végétalien|sans produits? laitiers?)\b/i,
+    /\b(quinoa|avocats?|légumes?|tomate|courgette|aubergine|poivron)\b/i
   ],
   'gluten-free': [
-    /gluten.free/i,
-    /\bgf\b/i,
-    /no gluten/i,
-    /without gluten/i
+    /\b(gluten.free|sans gluten|quinoa|salade|légumes?)\b/i,
+    /\b(rice|riz|risotto)\b/i
   ],
   'dairy-free': [
-    /dairy.free/i,
-    /lactose.free/i,
-    /no dairy/i,
-    /without dairy/i,
-    /no milk/i,
-    /no cheese/i
+    /\b(dairy.free|sans produits? laitiers?|sans fromage)\b/i,
+    /\b(vegan|végétalien)\b/i
   ],
-  'nut-free': [
-    /nut.free/i,
-    /no nuts/i,
-    /without nuts/i,
-    /allergy.friendly/i
-  ],
-  
+
   // Meal types
-  breakfast: [
-    /\bbreakfast\b/i,
-    /\bbrunch\b/i,
-    /morning/i,
-    /\boats\b/i,
-    /\bcereal\b/i,
-    /\bpancake/i,
-    /\bwaffle/i,
-    /\beggs?\b/i,
-    /\bomelet/i
-  ],
-  lunch: [
-    /\blunch\b/i,
-    /\bsandwich\b/i,
-    /\bwrap\b/i,
-    /\bsalad\b/i,
-    /\bsoup\b/i
-  ],
-  dinner: [
-    /\bdinner\b/i,
-    /\bmain course/i,
-    /\bentree/i,
-    /\bmain dish/i
-  ],
-  dessert: [
-    /\bdessert\b/i,
-    /\bsweet\b/i,
-    /\bcake\b/i,
-    /\bcookie/i,
-    /\bpie\b/i,
-    /\bice cream/i,
-    /\bchocolate/i,
-    /\bpudding/i
-  ],
-  snack: [
-    /\bsnack\b/i,
-    /\bappetizer/i,
-    /\bstarter/i,
-    /quick bite/i
-  ],
-  
-  // Cooking methods
-  'quick & easy': [
-    /quick/i,
-    /easy/i,
-    /simple/i,
-    /fast/i,
-    /\b15.min/i,
-    /\b20.min/i,
-    /\b30.min/i,
-    /one.pot/i,
-    /no.cook/i
-  ],
-  baked: [
-    /\bbaked?\b/i,
-    /\boven/i,
-    /\broast/i,
-    /\bgratin/i,
-    /\bcasserole/i
-  ],
-  grilled: [
-    /\bgrilled?\b/i,
-    /\bbarbecue/i,
-    /\bbbq\b/i,
-    /\bcharred/i
-  ],
-  'slow-cooked': [
-    /slow.cook/i,
-    /\bbraised?\b/i,
-    /\bstewed?\b/i,
-    /crock.pot/i,
-    /slow.cooker/i
-  ],
-  
-  // Cuisine types
-  italian: [
-    /\bitalian\b/i,
-    /\bpasta\b/i,
-    /\bpizza\b/i,
-    /\brisotto\b/i,
-    /\bbasil\b/i,
-    /\bparmesan\b/i,
-    /\bmozzarella\b/i
-  ],
-  asian: [
-    /\basian\b/i,
-    /\bchinese\b/i,
-    /\bjapanese\b/i,
-    /\bthai\b/i,
-    /\bsoy sauce\b/i,
-    /\bginger\b/i,
-    /\brice\b/i,
-    /\bnoodles\b/i
-  ],
-  mexican: [
-    /\bmexican\b/i,
-    /\btaco\b/i,
-    /\bburrito\b/i,
-    /\bsalsa\b/i,
-    /\bavocado\b/i,
-    /\bcilantro\b/i,
-    /\blime\b/i
-  ],
-  mediterranean: [
-    /mediterranean/i,
-    /\bgreek\b/i,
-    /\bolive oil\b/i,
-    /\bfeta\b/i,
-    /\bolives\b/i,
-    /\btomatoes\b/i
-  ],
-  
-  // Ingredient-based
-  chicken: [
-    /\bchicken\b/i,
-    /\bpoultry\b/i
-  ],
-  beef: [
-    /\bbeef\b/i,
-    /\bsteak\b/i,
-    /\bground beef\b/i
-  ],
-  pork: [
-    /\bpork\b/i,
-    /\bbacon\b/i,
-    /\bham\b/i,
-    /\bsausage\b/i
-  ],
-  seafood: [
-    /\bfish\b/i,
-    /\bsalmon\b/i,
-    /\btuna\b/i,
-    /\bshrimp\b/i,
-    /\bseafood\b/i,
-    /\bcrab\b/i,
-    /\blobster\b/i
-  ],
-  pasta: [
-    /\bpasta\b/i,
-    /\bspaghetti\b/i,
-    /\bpenne\b/i,
-    /\bfettuccine\b/i,
-    /\blasagna\b/i,
-    /\bravioli\b/i
-  ],
-  rice: [
-    /\brice\b/i,
-    /\brisotto\b/i,
-    /\bpilaf\b/i
-  ],
   salad: [
-    /\bsalad\b/i,
-    /\bgreens\b/i,
-    /\blettuce\b/i,
-    /\bspinach\b/i,
-    /\barugula\b/i
+    /\b(salade|salad)\b/i,
+    /\b(quinoa.*fèves?|avocats?.*quinoa|courgettes.*noisettes?)\b/i
   ],
   soup: [
-    /\bsoup\b/i,
-    /\bbroth\b/i,
-    /\bstew\b/i,
-    /\bbisque\b/i,
-    /\bchowder\b/i
+    /\b(soupe|soup|potage|velouté)\b/i
+  ],
+  pasta: [
+    /\b(pasta|pâtes?|spaghetti|linguine|penne)\b/i,
+    /\b(roulés.*courgettes|basil.*pasta)\b/i
+  ],
+  rice: [
+    /\b(rice|riz|risotto|pilaf|boulghour)\b/i
+  ],
+  dessert: [
+    /\b(dessert|gâteau|tarte.*sucr|mousse|crème)\b/i
+  ],
+
+  // Cooking methods
+  'quick & easy': [
+    /\b(quick|easy|facile|rapide|simple)\b/i,
+    /\b(poêlé|sauté|grillé|15.min|20.min|30.min)\b/i,
+    /\b(salade|pasta|pilaf)\b/i
+  ],
+  baked: [
+    /\b(baked|au four|rôti|tarte|farcies?)\b/i,
+    /\b(gratin|grillé|tomates.*farcies?)\b/i
+  ],
+  grilled: [
+    /\b(grilled|grillé|barbecue|bbq)\b/i,
+    /\b(pain.*grillé)\b/i
+  ],
+
+  // Cuisines
+  italian: [
+    /\b(italian|italien|italienne|pasta|risotto|basil|basilic)\b/i,
+    /\b(roulés.*italienne|courgettes.*noisettes)\b/i
+  ],
+  mediterranean: [
+    /\b(mediterranean|méditerranéen|feta|sumac|herbes?|basilic)\b/i,
+    /\b(tomates?.*herbes?|haricots.*feta)\b/i
+  ],
+  moroccan: [
+    /\b(moroccan|marocain|zaalouk|caviar.*aubergines?|maroc)\b/i
+  ],
+  french: [
+    /\b(french|français|française|ratatouille|tarte.*fine)\b/i,
+    /\b(courgettes.*chèvre|tamara)\b/i
+  ],
+
+  // Special ingredients
+  cheese: [
+    /\b(cheese|fromage|feta|chèvre|parmesan)\b/i
+  ],
+  seafood: [
+    /\b(seafood|crevettes?|poisson|saumon|thon)\b/i
+  ],
+  nuts: [
+    /\b(nuts|noisettes?|amandes?|noix)\b/i
+  ]
+}
+
+// Enhanced ingredient-based detection
+const ingredientPatterns = {
+  vegetarian: [
+    'tomate', 'courgette', 'aubergine', 'poivron', 'légumes', 'quinoa', 
+    'avocats', 'fèves', 'haricots', 'oseille', 'herbes', 'basilic',
+    'noisettes', 'fromage', 'feta', 'chèvre', 'oeufs', 'pasta', 'riz'
+  ],
+  seafood: [
+    'crevettes', 'poisson', 'saumon', 'thon', 'fruits de mer'
+  ],
+  'dairy-free': [], // Will be determined by absence of dairy + presence of vegan indicators
+  'gluten-free': [
+    'quinoa', 'riz', 'risotto' // Recipes that are naturally gluten-free
   ]
 }
 
 /**
  * Analyze recipe content and suggest tags
  */
-function suggestTags(recipe: { title: string; summary: string; rawIngredients: string }): string[] {
-  const searchText = `${recipe.title} ${recipe.summary} ${recipe.rawIngredients}`.toLowerCase()
-  const suggestedTags: string[] = []
+function analyzeRecipe(recipe: any): string[] {
+  const suggestedTags = new Set<string>()
+  const content = `${recipe.title} ${recipe.summary} ${recipe.instructions}`.toLowerCase()
   
-  for (const [tag, patterns] of Object.entries(TAG_PATTERNS)) {
-    const matches = patterns.some(pattern => pattern.test(searchText))
-    if (matches) {
-      suggestedTags.push(tag)
+  // Parse ingredients for additional context
+  let ingredients: string[] = []
+  try {
+    ingredients = JSON.parse(recipe.rawIngredients || '[]')
+  } catch (e) {
+    // Fallback to empty array if parsing fails
+  }
+  const ingredientText = ingredients.join(' ').toLowerCase()
+  const fullText = `${content} ${ingredientText}`
+
+  // Check each tag pattern
+  for (const [tag, patterns] of Object.entries(tagPatterns)) {
+    for (const pattern of patterns) {
+      if (pattern.test(fullText)) {
+        suggestedTags.add(tag)
+        break
+      }
     }
   }
-  
-  return suggestedTags
-}
 
-/**
- * Parse existing tags from JSON string
- */
-function parseExistingTags(tagsJson: string): string[] {
-  try {
-    const parsed = JSON.parse(tagsJson)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
+  // Special logic for vegetarian detection
+  const hasVegetarianIngredients = ingredientPatterns.vegetarian.some(ing => 
+    fullText.includes(ing)
+  )
+  const hasMeatKeywords = /\b(chicken|beef|pork|meat|viande|poulet|boeuf|porc|agneau|lamb)\b/i.test(fullText)
+  const hasSeafood = ingredientPatterns.seafood.some(ing => fullText.includes(ing))
+  
+  if (hasVegetarianIngredients && !hasMeatKeywords && !hasSeafood) {
+    suggestedTags.add('vegetarian')
   }
+
+  // Special logic for dairy-free
+  const hasDairy = /\b(cheese|fromage|feta|chèvre|parmesan|cream|crème|milk|lait|butter|beurre)\b/i.test(fullText)
+  if (!hasDairy && (suggestedTags.has('vegan') || /\b(dairy.free|sans produits? laitiers?)\b/i.test(fullText))) {
+    suggestedTags.add('dairy-free')
+  }
+
+  // Convert Set to Array and filter out any empty tags
+  return Array.from(suggestedTags).filter(tag => tag.length > 0)
 }
 
 /**
  * Main backfill function
  */
 async function backfillRecipeTags() {
-  console.log('🏷️  Starting recipe tags backfill...')
+  console.log('🏷️  Starting enhanced recipe tags backfill...')
   
-  try {
-    // Fetch all recipes
-    const recipes = await prisma.recipe.findMany({
-      select: {
-        id: true,
-        title: true,
-        summary: true,
-        rawIngredients: true,
-        tags: true
-      }
-    })
-    
-    console.log(`📋 Found ${recipes.length} recipes to analyze`)
-    
-    let updatedCount = 0
-    let skippedCount = 0
-    
-    for (const recipe of recipes) {
-      const existingTags = parseExistingTags(recipe.tags)
-      
-      // Skip if recipe already has tags
-      if (existingTags.length > 0) {
-        console.log(`⏭️  Skipping "${recipe.title}" - already has tags: ${existingTags.join(', ')}`)
-        skippedCount++
-        continue
-      }
-      
-      // Suggest tags based on content
-      const suggestedTags = suggestTags(recipe)
-      
-      if (suggestedTags.length > 0) {
-        // Update recipe with suggested tags
-        await prisma.recipe.update({
-          where: { id: recipe.id },
-          data: { tags: JSON.stringify(suggestedTags) }
-        })
-        
-        console.log(`✅ Updated "${recipe.title}" with tags: ${suggestedTags.join(', ')}`)
-        updatedCount++
-      } else {
-        console.log(`❓ No tags suggested for "${recipe.title}"`)
-        skippedCount++
-      }
+  // Get all recipes
+  const recipes = await prisma.recipe.findMany({
+    select: {
+      id: true,
+      title: true,
+      summary: true,
+      instructions: true,
+      rawIngredients: true,
+      tags: true
+    }
+  })
+  
+  console.log(`📋 Found ${recipes.length} recipes to analyze`)
+  
+  let updatedCount = 0
+  let skippedCount = 0
+  
+  for (const recipe of recipes) {
+    // Parse existing tags
+    let existingTags: string[] = []
+    try {
+      existingTags = JSON.parse(recipe.tags || '[]')
+    } catch (e) {
+      existingTags = []
     }
     
-    console.log('\n🎉 Backfill completed!')
-    console.log(`📊 Updated: ${updatedCount} recipes`)
-    console.log(`⏭️  Skipped: ${skippedCount} recipes`)
+    // Analyze recipe for new tags
+    const suggestedTags = analyzeRecipe(recipe)
     
-  } catch (error) {
-    console.error('❌ Error during backfill:', error)
-    throw error
-  } finally {
-    await prisma.$disconnect()
+    // Merge with existing tags (avoid duplicates)
+    const allTags = [...new Set([...existingTags, ...suggestedTags])]
+    
+    if (suggestedTags.length > 0 || allTags.length !== existingTags.length) {
+      // Update recipe with new tags
+      await prisma.recipe.update({
+        where: { id: recipe.id },
+        data: { tags: JSON.stringify(allTags) }
+      })
+      
+      console.log(`✅ Updated "${recipe.title}":`)
+      console.log(`   Existing: [${existingTags.join(', ')}]`)
+      console.log(`   Added: [${suggestedTags.join(', ')}]`)
+      console.log(`   Final: [${allTags.join(', ')}]`)
+      updatedCount++
+    } else {
+      console.log(`⏭️  Skipping "${recipe.title}" - no new tags suggested`)
+      skippedCount++
+    }
   }
+  
+  console.log('\n🎉 Enhanced backfill completed!')
+  console.log(`📊 Updated: ${updatedCount} recipes`)
+  console.log(`⏭️  Skipped: ${skippedCount} recipes`)
 }
 
-// Run the backfill if this script is executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  backfillRecipeTags()
-    .then(() => {
-      console.log('✅ Backfill script completed successfully')
-      process.exit(0)
-    })
-    .catch((error) => {
-      console.error('❌ Backfill script failed:', error)
-      process.exit(1)
-    })
-}
-
-export { backfillRecipeTags, suggestTags } 
+// Run the backfill
+backfillRecipeTags()
+  .then(() => {
+    console.log('✅ Enhanced backfill script completed successfully')
+    process.exit(0)
+  })
+  .catch((error) => {
+    console.error('❌ Error during backfill:', error)
+    process.exit(1)
+  })
+  .finally(() => {
+    prisma.$disconnect()
+  }) 

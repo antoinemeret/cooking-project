@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { RefreshCw, Trash2, Clock, Star } from 'lucide-react'
+import { RefreshCw, Trash2, Clock, Star, Calendar, CheckCircle2, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { analytics } from '@/lib/analytics'
 
 // Temporary interface for planned recipes until we have the API
 interface PlannedRecipe {
@@ -459,6 +460,20 @@ export default function PlannerPage() {
                     }
                   })
                   
+                  // Track meal completion analytics
+                  analytics.track('meal_completion_toggled', {
+                    recipeId: plannedRecipe.recipe.id,
+                    recipeTitle: plannedRecipe.recipe.title,
+                    isCompleted: completed,
+                    totalMeals: mealPlan?.totalRecipes || 0,
+                    completedMeals: completed 
+                      ? (mealPlan?.completedRecipes || 0) + 1 
+                      : (mealPlan?.completedRecipes || 0) - 1,
+                    completionRate: completed 
+                      ? ((mealPlan?.completedRecipes || 0) + 1) / (mealPlan?.totalRecipes || 1) * 100
+                      : ((mealPlan?.completedRecipes || 0) - 1) / (mealPlan?.totalRecipes || 1) * 100
+                  })
+                  
                   // Make API call to persist the change
                   try {
                     const response = await fetch('/api/planner', {
@@ -501,6 +516,14 @@ export default function PlannerPage() {
                   setRecipeToRemove(plannedRecipe)
                 }}
                 onViewRecipe={() => {
+                  // Track recipe view analytics
+                  analytics.track('recipe_viewed_from_planner', {
+                    recipeId: plannedRecipe.recipe.id,
+                    recipeTitle: plannedRecipe.recipe.title,
+                    isCompleted: plannedRecipe.completed,
+                    viewSource: 'planner_card'
+                  })
+                  
                   setSelectedRecipe(plannedRecipe.recipe)
                   setFullRecipeDetails(null) // Reset previous details
                   fetchFullRecipeDetails(plannedRecipe.recipe.id)
@@ -543,6 +566,20 @@ export default function PlannerPage() {
                           plannedRecipes: updatedPlannedRecipes,
                           completedRecipes: completedCount
                         }
+                      })
+                      
+                      // Track meal completion analytics
+                      analytics.track('meal_completion_toggled', {
+                        recipeId: plannedRecipe.recipe.id,
+                        recipeTitle: plannedRecipe.recipe.title,
+                        isCompleted: newCompleted,
+                        totalMeals: mealPlan?.totalRecipes || 0,
+                        completedMeals: newCompleted 
+                          ? (mealPlan?.completedRecipes || 0) + 1 
+                          : (mealPlan?.completedRecipes || 0) - 1,
+                        completionRate: newCompleted 
+                          ? ((mealPlan?.completedRecipes || 0) + 1) / (mealPlan?.totalRecipes || 1) * 100
+                          : ((mealPlan?.completedRecipes || 0) - 1) / (mealPlan?.totalRecipes || 1) * 100
                       })
                       
                       // Make API call

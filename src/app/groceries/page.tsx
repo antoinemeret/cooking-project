@@ -5,9 +5,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { RefreshCw, Search, ShoppingCart, Trash2, CheckCircle2, Clock, Star } from 'lucide-react'
+import { RefreshCw, Search, ShoppingCart, Trash2, CheckCircle2, Clock, Star, Check, Package } from 'lucide-react'
 import { formatIngredientForDisplay } from '@/lib/grocery-utils'
 import { cn } from '@/lib/utils'
+import { trackGroceryListUsage, analytics } from '@/lib/analytics'
 
 interface AggregatedIngredient {
   name: string
@@ -118,6 +119,15 @@ export default function GroceriesPage() {
           remaining: newRemaining,
           percentComplete: newPercentComplete
         }
+      })
+      
+      // Track grocery list interaction
+      analytics.track('grocery_item_toggled', {
+        ingredientName: ingredient.name,
+        isChecked: checked,
+        totalItems: groceryList.length,
+        checkedCount: checked ? stats.checked + 1 : stats.checked - 1,
+        completionRate: (checked ? stats.checked + 1 : stats.checked - 1) / groceryList.length * 100
       })
       
       // Make API call to persist the change
@@ -362,6 +372,14 @@ export default function GroceriesPage() {
                             <button
                               key={sourceIndex}
                               onClick={() => {
+                                // Track recipe view from grocery list
+                                analytics.track('recipe_viewed_from_grocery_list', {
+                                  recipeTitle: source,
+                                  ingredientName: ingredient.name,
+                                  viewSource: 'grocery_ingredient_source',
+                                  ingredientChecked: ingredient.checked
+                                })
+                                
                                 setSelectedRecipe({ title: source })
                                 setFullRecipeDetails(null)
                                 fetchFullRecipeDetails(source)
@@ -409,6 +427,14 @@ export default function GroceriesPage() {
                             <button
                               key={sourceIndex}
                               onClick={() => {
+                                // Track recipe view from grocery list
+                                analytics.track('recipe_viewed_from_grocery_list', {
+                                  recipeTitle: source,
+                                  ingredientName: ingredient.name,
+                                  viewSource: 'grocery_ingredient_source',
+                                  ingredientChecked: ingredient.checked
+                                })
+                                
                                 setSelectedRecipe({ title: source })
                                 setFullRecipeDetails(null)
                                 fetchFullRecipeDetails(source)

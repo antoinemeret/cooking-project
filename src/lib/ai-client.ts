@@ -1,6 +1,7 @@
 import { ChatAnthropic } from '@langchain/anthropic'
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages'
 import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts'
+import { PerformanceMonitor } from './performance-utils'
 
 // Claude Sonnet 4 model configuration
 const CLAUDE_MODEL = 'claude-3-5-sonnet-20241022'
@@ -374,10 +375,15 @@ export class RecipeAssistantAI {
     currentMonth?: number
   ): Promise<{ response: string; usedFallback: boolean; error?: AIServiceError }> {
     
+    const performanceMonitor = PerformanceMonitor.getInstance()
+    const endTimer = performanceMonitor.startTimer('ai-response-generation')
+    
     try {
       // Check service health first
       const isHealthy = await this.checkServiceHealth()
       if (!isHealthy) {
+        endTimer()
+        performanceMonitor.recordMetric('ai-response-fallback', 1)
         return {
           response: generateFallbackResponse(userInput),
           usedFallback: true,
@@ -413,9 +419,14 @@ User request: ${userInput}`
         return result.content as string
       }, 'Generate response')
 
+      endTimer()
+      performanceMonitor.recordMetric('ai-response-success', 1)
       return { response, usedFallback: false }
 
     } catch (error) {
+      endTimer()
+      performanceMonitor.recordMetric('ai-response-error', 1)
+      
       if (error instanceof AIServiceException) {
         console.error('AI service error:', error.serviceError)
         
