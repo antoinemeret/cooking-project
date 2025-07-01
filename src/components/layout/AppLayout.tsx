@@ -18,7 +18,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       
       {/* Main content area */}
       <main className={cn(
-        "min-h-screen",
+        "min-h-screen h-full flex flex-col",
         // Mobile: bottom padding for bottom navigation + safe area
         "pb-16 lg:pb-0 pb-safe",
         // Desktop: left margin for sidebar

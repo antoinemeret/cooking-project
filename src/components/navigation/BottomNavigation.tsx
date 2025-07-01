@@ -42,7 +42,7 @@ export function BottomNavigation() {
   ]
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border z-50">
+    <nav className="fixed bottom-0 left-0 right-0 bg-background border-t border-border shadow-lg z-50">
       <div className="grid grid-cols-4 h-16">
         {navItems.map((item) => (
           <Link

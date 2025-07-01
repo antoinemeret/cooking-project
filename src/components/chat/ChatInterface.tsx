@@ -653,8 +653,8 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         </Button>
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4 md:space-y-6">
+      {/* Main Chat Area (scrollable, rendered only once) */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4 md:space-y-6">
         {/* Onboarding Tips */}
         {showOnboarding && (
           <OnboardingTips onDismiss={dismissOnboarding} />
@@ -680,33 +680,78 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Chat Input */}
-      <ChatInput
-        onSendMessage={sendMessage}
-        disabled={session.isTyping || !isOnline}
-        placeholder={!isOnline ? "You're offline..." : session.isTyping ? "AI is responding..." : undefined}
-      />
-
-      {/* Conversation Starters */}
-      {session.messages.length === 1 && !session.isResumed && (
-        <div className="p-3 sm:p-4 md:p-6 border-t bg-muted/30">
-          <p className="text-xs sm:text-sm md:text-base text-muted-foreground mb-2 md:mb-3">Try asking:</p>
-          <div className="flex flex-wrap gap-1.5 sm:gap-2 md:gap-3">
-            {conversationStarters.map((starter, index) => (
-              <Button
-                key={index}
-                variant="outline"
-                size="sm"
-                className="text-xs sm:text-sm md:text-base h-8 md:h-10 px-2 sm:px-3 md:px-4"
-                onClick={() => sendMessage(starter)}
-                disabled={session.isTyping}
-              >
-                {starter}
-              </Button>
-            ))}
+      {/* Mobile: fixed input above bottom nav */}
+      <div className="fixed bottom-[65px] left-0 right-0 z-[60] bg-background pb-safe lg:hidden">
+        <ChatInput
+          onSendMessage={sendMessage}
+          disabled={session.isTyping || !isOnline}
+          placeholder={
+            !isOnline
+              ? "You're offline..."
+              : session.isTyping
+                ? "AI is responding..."
+                : (session.messages.length === 1 && session.messages[0].role === 'assistant')
+                  ? "How can I help you plan your meals ?"
+                  : "Answer..."
+          }
+        />
+        {/* Conversation Starters */}
+        {session.messages.length === 1 && !session.isResumed && (
+          <div className="p-3 sm:p-4 md:p-6 border-t bg-muted/30">
+            <p className="text-xs sm:text-sm md:text-base text-muted-foreground mb-2 md:mb-3">Try asking:</p>
+            <div className="flex flex-wrap gap-1.5 sm:gap-2 md:gap-3">
+              {conversationStarters.map((starter, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs sm:text-sm md:text-base h-8 md:h-10 px-2 sm:px-3 md:px-4"
+                  onClick={() => sendMessage(starter)}
+                  disabled={session.isTyping}
+                >
+                  {starter}
+                </Button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+      {/* Desktop: sticky input at bottom of chat area */}
+      <div className="bg-background sticky bottom-0 left-0 right-0 z-10 hidden lg:block">
+        <ChatInput
+          onSendMessage={sendMessage}
+          disabled={session.isTyping || !isOnline}
+          placeholder={
+            !isOnline
+              ? "You're offline..."
+              : session.isTyping
+                ? "AI is responding..."
+                : (session.messages.length === 1 && session.messages[0].role === 'assistant')
+                  ? "How can I help you plan your meals ?"
+                  : "Answer..."
+          }
+        />
+        {/* Conversation Starters */}
+        {session.messages.length === 1 && !session.isResumed && (
+          <div className="p-3 sm:p-4 md:p-6 border-t bg-muted/30">
+            <p className="text-xs sm:text-sm md:text-base text-muted-foreground mb-2 md:mb-3">Try asking:</p>
+            <div className="flex flex-wrap gap-1.5 sm:gap-2 md:gap-3">
+              {conversationStarters.map((starter, index) => (
+                <Button
+                  key={index}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs sm:text-sm md:text-base h-8 md:h-10 px-2 sm:px-3 md:px-4"
+                  onClick={() => sendMessage(starter)}
+                  disabled={session.isTyping}
+                >
+                  {starter}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 } 

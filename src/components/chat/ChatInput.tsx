@@ -58,7 +58,7 @@ export function ChatInput({
 
   return (
     <div className={cn(
-      "flex items-end space-x-2 sm:space-x-3 md:space-x-4 p-3 sm:p-4 md:p-6 border-t bg-background",
+      "flex items-end space-x-2 sm:space-x-3 md:space-x-4 p-3 sm:p-4 md:p-6 bg-background",
       className
     )}>
       <div className="flex-1 relative">
