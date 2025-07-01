@@ -60,7 +60,7 @@ export default function RecipesPage() {
   return (
     <div 
       ref={containerRef}
-      className="container mx-auto p-3 sm:p-4 max-w-full h-full overflow-auto"
+      className="container mx-auto p-3 sm:p-4 max-w-full h-full overflow-auto pb-20 lg:pb-4"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}

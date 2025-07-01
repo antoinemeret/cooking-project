@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
+import { parseTraditional, isRecipeDataMeaningful } from '@/lib/scrapers/traditional-parser'
 
 async function extractRecipeWithLLM(prompt: any) {
   let output = ''
@@ -34,28 +35,58 @@ async function extractRecipeWithLLM(prompt: any) {
 
 async function callLLM(html: string, url: string) {
   const $ = cheerio.load(html)
-  const mainContent = $('main').text() || $('body').text()
-  const safeContent = mainContent.slice(0, 8000)
-
-  const prompt = `
-  You are an extraction tool.
-
-Your job is to extract the title, ingredients list and instructions exactly as written in the HTML.
-
-Return the text exactly. Do NOT rephrase, translate, correct, or interpret anything.
-
-Return only a JSON object in the following format:
-{
-  "title" (string), 
-  "rawIngredients" (array of strings), 
-  "instructions" (string), 
-  "url" (string).
+  
+  // Extract only recipe-relevant content for LLM (performance optimization)
+  // Remove scripts, styles, navigation, ads, comments
+  $('script, style, nav, header, footer, aside, .ads, .advertisement, .social, .comments, .sidebar').remove()
+  
+  // Focus on recipe-specific elements first
+  const recipeSelectors = [
+    '[class*="recipe"]',
+    '[id*="recipe"]', 
+    '[class*="ingredient"]',
+    '[class*="instruction"]',
+    '[class*="direction"]',
+    '[class*="method"]',
+    'main',
+    'article',
+    '.content',
+    '.post-content'
+  ]
+  
+  let recipeContent = ''
+  for (const selector of recipeSelectors) {
+    const element = $(selector).first()
+    if (element.length > 0) {
+      recipeContent = element.text().trim()
+      if (recipeContent.length > 200) { // Only use if substantial content
+        break
+      }
+    }
   }
+  
+  // Fallback to body if no recipe-specific content found
+  if (!recipeContent || recipeContent.length < 200) {
+    recipeContent = $('body').text()
+  }
+  
+  // Clean up whitespace and limit size more aggressively
+  const cleanContent = recipeContent
+    .replace(/\s+/g, ' ')
+    .replace(/\n+/g, ' ')
+    .trim()
+    .slice(0, 3000) // Reduced from 8000 to 3000 characters
 
-If you see "500g de tomates mûres", return it exactly like that. DO NOT normalize it to "tomate".
+  const prompt = `Extract recipe data from this text. Return ONLY a JSON object:
 
-Here is the HTML: ${safeContent}
-  `
+{
+  "title": "recipe title",
+  "rawIngredients": ["ingredient 1", "ingredient 2"],
+  "instructions": "cooking instructions",
+  "url": "${url}"
+}
+
+Text: ${cleanContent}`
 
   const output = await extractRecipeWithLLM(prompt)
 
@@ -99,11 +130,38 @@ export async function POST(req: NextRequest) {
     }
 
     const html = await htmlRes.text()
+    
+    // Try traditional parser first
+    console.log('Attempting traditional parsing first...')
+    const traditionalResult = await parseTraditional(html, url)
+    
+    if (traditionalResult.success && traditionalResult.recipe && isRecipeDataMeaningful(traditionalResult.recipe)) {
+      console.log('Traditional parsing successful, using structured data')
+      
+      // Convert traditional parser result to expected format
+      const recipe = {
+        title: traditionalResult.recipe.title || "Recipe",
+        rawIngredients: traditionalResult.recipe.ingredients || [],
+        instructions: traditionalResult.recipe.instructions?.join('\n\n') || traditionalResult.recipe.summary || "",
+        url: url,
+        parsingMethod: traditionalResult.parsingMethod,
+        processingTime: traditionalResult.processingTime
+      }
+      
+      console.log('API response (traditional):', recipe)
+      return NextResponse.json({ recipe })
+    }
+    
+    // Fall back to LLM if traditional parsing failed or returned insufficient data
+    console.log('Traditional parsing failed or insufficient data, falling back to LLM...')
     const recipe = await callLLM(html, url)
     
-    console.log('API response:', recipe)
-
+    // Add fallback indicator
+    recipe.parsingMethod = 'llm-fallback'
+    
+    console.log('API response (LLM fallback):', recipe)
     return NextResponse.json({ recipe })
+    
   } catch (err) {
     console.error('API /api/scrape error:', err)
     return NextResponse.json({ error: 'Server error', message: String(err) }, { status: 500 })

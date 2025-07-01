@@ -1,6 +1,40 @@
 import * as cheerio from 'cheerio'
 import { ParsedRecipe, ParsingResult, ParsingError } from '@/types/comparison'
 
+/**
+ * Decode HTML entities in text content
+ * Handles common entities like &#039; (apostrophe), &quot; (quote), &amp; (ampersand), etc.
+ */
+function decodeHtmlEntities(text: string | null): string | null {
+  if (!text) return null
+  
+  let decoded = text
+  
+  // Replace common HTML entities
+  decoded = decoded.replace(/&amp;/g, '&')
+  decoded = decoded.replace(/&lt;/g, '<')
+  decoded = decoded.replace(/&gt;/g, '>')
+  decoded = decoded.replace(/&quot;/g, '"')
+  decoded = decoded.replace(/&#x27;/g, "'")
+  decoded = decoded.replace(/&#x2F;/g, '/')
+  decoded = decoded.replace(/&#039;/g, "'")
+  decoded = decoded.replace(/&#39;/g, "'")
+  decoded = decoded.replace(/&apos;/g, "'")
+  decoded = decoded.replace(/&nbsp;/g, ' ')
+  
+  // Replace numeric entities (decimal)
+  decoded = decoded.replace(/&#(\d+);/g, (match, num) => {
+    return String.fromCharCode(parseInt(num, 10))
+  })
+  
+  // Replace numeric entities (hexadecimal)
+  decoded = decoded.replace(/&#x([0-9a-fA-F]+);/g, (match, hex) => {
+    return String.fromCharCode(parseInt(hex, 16))
+  })
+  
+  return decoded
+}
+
 // Logging utility for traditional parsing
 class TraditionalParsingLogger {
   private context: string
@@ -594,11 +628,11 @@ function extractRecipeFromJsonLD(jsonData: any): ParsedRecipe | null {
 function extractStringValue(value: any): string | null {
   if (!value) return null
   
-  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'string') return decodeHtmlEntities(value.trim())
   
   // Handle structured text objects
   if (typeof value === 'object' && value.text) {
-    return value.text.trim()
+    return decodeHtmlEntities(value.text.trim())
   }
   
   // Handle arrays - take first non-empty string
@@ -639,16 +673,16 @@ function extractInstructions(instructions: any): string[] | null {
  */
 function extractInstructionText(instruction: any): string | null {
   if (typeof instruction === 'string') {
-    return instruction.trim()
+    return decodeHtmlEntities(instruction.trim())
   }
   
   if (typeof instruction === 'object') {
     // HowToStep format
-    if (instruction.text) return instruction.text.trim()
-    if (instruction.name) return instruction.name.trim()
+    if (instruction.text) return decodeHtmlEntities(instruction.text.trim())
+    if (instruction.name) return decodeHtmlEntities(instruction.name.trim())
     
     // CreativeWork format
-    if (instruction.description) return instruction.description.trim()
+    if (instruction.description) return decodeHtmlEntities(instruction.description.trim())
   }
   
   return null
@@ -817,7 +851,7 @@ export async function parseMicrodata(html: string): Promise<ParsingResult> {
       '[itemtype*="schema.org/Recipe"]'
     ]
     
-    let recipeElement: cheerio.Cheerio<any> | null = null
+    let recipeElement: any = null
     
     for (const selector of recipeSelectors) {
       const elements = $(selector)
@@ -894,15 +928,15 @@ function extractMicrodataProperty($: any, container: any, property: string): str
   
   // Check for content attribute first (meta tags)
   const contentAttr = firstElement.attr('content')
-  if (contentAttr) return contentAttr.trim()
+  if (contentAttr) return decodeHtmlEntities(contentAttr.trim())
   
   // Check for value attribute (input elements)
   const valueAttr = firstElement.attr('value')
-  if (valueAttr) return valueAttr.trim()
+  if (valueAttr) return decodeHtmlEntities(valueAttr.trim())
   
   // Get text content
   const textContent = firstElement.text().trim()
-  if (textContent) return textContent
+  if (textContent) return decodeHtmlEntities(textContent)
   
   return null
 }
@@ -920,21 +954,24 @@ function extractMicrodataArray($: any, container: any, property: string): string
     // Check for content attribute first
     const contentAttr = $element.attr('content')
     if (contentAttr) {
-      results.push(contentAttr.trim())
+      const decoded = decodeHtmlEntities(contentAttr.trim())
+      if (decoded) results.push(decoded)
       return
     }
     
     // Check for value attribute
     const valueAttr = $element.attr('value')
     if (valueAttr) {
-      results.push(valueAttr.trim())
+      const decoded = decodeHtmlEntities(valueAttr.trim())
+      if (decoded) results.push(decoded)
       return
     }
     
     // Get text content
     const textContent = $element.text().trim()
     if (textContent) {
-      results.push(textContent)
+      const decoded = decodeHtmlEntities(textContent)
+      if (decoded) results.push(decoded)
     }
   })
   
@@ -1175,7 +1212,7 @@ function extractHTMLTitle($: any): string | null {
     if (element.length > 0) {
       const text = element.text().trim()
       if (text && text.length < 200) { // Reasonable title length
-        return text
+        return decodeHtmlEntities(text)
       }
     }
   }
@@ -1204,12 +1241,12 @@ function extractHTMLSummary($: any): string | null {
       if (element.is('meta')) {
         const content = element.attr('content')
         if (content && content.trim().length > 0) {
-          return content.trim()
+          return decodeHtmlEntities(content.trim())
         }
       } else {
         const text = element.text().trim()
         if (text && text.length > 20 && text.length < 500) { // Reasonable summary length
-          return text
+          return decodeHtmlEntities(text)
         }
       }
     }
@@ -1244,7 +1281,8 @@ function extractHTMLInstructions($: any): string[] | null {
       elements.each((_: any, element: any) => {
         const text = $(element).text().trim()
         if (text && text.length > 10) { // Filter out very short instructions
-          instructions.push(text)
+          const decoded = decodeHtmlEntities(text)
+          if (decoded) instructions.push(decoded)
         }
       })
       
@@ -1270,7 +1308,8 @@ function extractHTMLInstructions($: any): string[] | null {
       elements.each((_: any, element: any) => {
         const text = $(element).text().trim()
         if (text && text.length > 10) {
-          instructions.push(text)
+          const decoded = decodeHtmlEntities(text)
+          if (decoded) instructions.push(decoded)
         }
       })
       
@@ -1304,7 +1343,8 @@ function extractHTMLIngredients($: any): string[] | null {
       elements.each((_: any, element: any) => {
         const text = $(element).text().trim()
         if (text && text.length > 2) { // Filter out very short ingredients
-          ingredients.push(text)
+          const decoded = decodeHtmlEntities(text)
+          if (decoded) ingredients.push(decoded)
         }
       })
       
@@ -1329,7 +1369,8 @@ function extractHTMLIngredients($: any): string[] | null {
       elements.each((_: any, element: any) => {
         const text = $(element).text().trim()
         if (text && text.length > 2) {
-          ingredients.push(text)
+          const decoded = decodeHtmlEntities(text)
+          if (decoded) ingredients.push(decoded)
         }
       })
       
@@ -1486,8 +1527,11 @@ function extractHTMLDifficulty($: any): string | null {
     const element = $(selector).first()
     if (element.length > 0) {
       const text = element.text().trim().toLowerCase()
-      const foundLevel = difficultyLevels.find(level => text.includes(level))
-      if (foundLevel) return foundLevel
+      const decoded = decodeHtmlEntities(text)
+      if (decoded) {
+        const foundLevel = difficultyLevels.find(level => decoded.includes(level))
+        if (foundLevel) return foundLevel
+      }
     }
   }
   
@@ -1511,7 +1555,7 @@ function extractHTMLCuisine($: any): string | null {
     if (element.length > 0) {
       const text = element.text().trim()
       if (text && text.length < 50) { // Reasonable cuisine length
-        return text
+        return decodeHtmlEntities(text)
       }
     }
   }
@@ -1539,7 +1583,8 @@ function extractHTMLTags($: any): string[] {
     elements.each((_: any, element: any) => {
       const text = $(element).text().trim()
       if (text && text.length < 30) { // Reasonable tag length
-        tags.push(text)
+        const decoded = decodeHtmlEntities(text)
+        if (decoded) tags.push(decoded)
       }
     })
   }

@@ -654,7 +654,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
       </div>
 
       {/* Main Chat Area (scrollable, rendered only once) */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4 md:space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-3 sm:space-y-4 md:space-y-6 pb-32 lg:pb-6">
         {/* Onboarding Tips */}
         {showOnboarding && (
           <OnboardingTips onDismiss={dismissOnboarding} />

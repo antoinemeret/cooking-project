@@ -343,7 +343,7 @@ export default function PlannerPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-3 sm:p-4 max-w-full">
+      <div className="container mx-auto p-3 sm:p-4 max-w-full pb-20 lg:pb-4">
         <div className="flex items-center justify-center min-h-[50vh]">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
@@ -356,7 +356,7 @@ export default function PlannerPage() {
 
   if (error) {
     return (
-      <div className="container mx-auto p-3 sm:p-4 max-w-full">
+      <div className="container mx-auto p-3 sm:p-4 max-w-full pb-20 lg:pb-4">
         <div className="flex items-center justify-center min-h-[50vh]">
           <div className="text-center">
             <div className="text-destructive text-4xl mb-4">⚠️</div>
@@ -373,7 +373,7 @@ export default function PlannerPage() {
   }
 
   return (
-    <div className="container mx-auto p-3 sm:p-4 max-w-full">
+    <div className="container mx-auto p-3 sm:p-4 max-w-full pb-20 lg:pb-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 sm:mb-6">
         <div>
