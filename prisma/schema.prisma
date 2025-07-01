@@ -65,3 +65,66 @@ model GroceryList {
   
   mealPlan     MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Cascade)
 }
+
+// URL Import Comparison Tracking Tables
+model ComparisonResult {
+  id                    String   @id @default(cuid())
+  url                   String
+  timestamp             DateTime @default(now())
+  ollamaResult          String   // JSON stringified ParsingResult
+  traditionalResult     String   // JSON stringified ParsingResult
+  status                String   @default("pending") // pending, evaluated, archived
+  notes                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  
+  // Relations
+  evaluations           ComparisonEvaluation[]
+  
+  @@index([status])
+  @@index([timestamp])
+  @@index([url])
+}
+
+model ComparisonEvaluation {
+  id                    Int      @id @default(autoincrement())
+  comparisonId          String
+  technology            String   // "ollama" or "traditional"
+  titleAccurate         Boolean?
+  ingredientsAccurate   Boolean?
+  instructionsAccurate  Boolean?
+  overallSuccess        Boolean?
+  evaluatorNotes        String?
+  evaluatedAt           DateTime @default(now())
+  
+  // Relations
+  comparison            ComparisonResult @relation(fields: [comparisonId], references: [id], onDelete: Cascade)
+  
+  @@unique([comparisonId, technology])
+  @@index([technology])
+  @@index([overallSuccess])
+}
+
+model PerformanceMetrics {
+  id                      Int      @id @default(autoincrement())
+  technologyName          String   @unique // "ollama" or "traditional"
+  totalTests              Int      @default(0)
+  successfulParses        Int      @default(0)
+  failedParses            Int      @default(0)
+  averageProcessingTime   Float    @default(0) // in milliseconds
+  successRate             Float    @default(0) // percentage
+  
+  // Accuracy breakdown
+  titleAccuracyRate       Float    @default(0)
+  ingredientsAccuracyRate Float    @default(0)
+  instructionsAccuracyRate Float   @default(0)
+  overallAccuracyRate     Float    @default(0)
+  
+  // Processing time statistics
+  fastestParse            Float    @default(0)
+  slowestParse            Float    @default(0)
+  medianProcessingTime    Float    @default(0)
+  
+  lastUpdated             DateTime @updatedAt
+  createdAt               DateTime @default(now())
+}

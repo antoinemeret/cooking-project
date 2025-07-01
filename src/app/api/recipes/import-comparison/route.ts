@@ -7,6 +7,7 @@ import {
   ParsedRecipe 
 } from '@/types/comparison'
 import { v4 as uuidv4 } from 'uuid'
+import { prisma } from '@/lib/prisma'
 
 // Logging utility for the comparison API
 class ComparisonLogger {
@@ -262,6 +263,104 @@ async function runTraditionalApproach(html: string, url: string, logger: Compari
 }
 
 /**
+ * Save comparison results to database
+ */
+async function saveComparisonResult(
+  comparisonId: string,
+  url: string,
+  ollamaResult: ParsingResult,
+  traditionalResult: ParsingResult,
+  logger: ComparisonLogger
+): Promise<void> {
+  try {
+    logger.log('info', 'Saving comparison results to database', { comparisonId })
+
+    await prisma.comparisonResult.create({
+      data: {
+        id: comparisonId,
+        url,
+        timestamp: new Date(),
+        ollamaResult: JSON.stringify(ollamaResult),
+        traditionalResult: JSON.stringify(traditionalResult),
+        status: 'pending', // Default status
+        notes: null
+      }
+    })
+
+    logger.log('info', 'Comparison results saved successfully', { comparisonId })
+  } catch (error) {
+    logger.log('error', 'Failed to save comparison results to database', {
+      comparisonId,
+      error: String(error)
+    })
+    // Don't throw the error - we still want to return the results even if DB save fails
+  }
+}
+
+/**
+ * Update performance metrics for both technologies
+ */
+async function updatePerformanceMetrics(
+  ollamaResult: ParsingResult,
+  traditionalResult: ParsingResult,
+  logger: ComparisonLogger
+): Promise<void> {
+  try {
+    logger.log('info', 'Updating performance metrics')
+
+    // Update Ollama metrics
+    await prisma.performanceMetrics.upsert({
+      where: { technologyName: 'ollama' },
+      update: {
+        totalTests: { increment: 1 },
+        successfulParses: ollamaResult.success ? { increment: 1 } : undefined,
+        failedParses: !ollamaResult.success ? { increment: 1 } : undefined,
+        // Note: We'll calculate more complex metrics in a later task
+        lastUpdated: new Date()
+      },
+      create: {
+        technologyName: 'ollama',
+        totalTests: 1,
+        successfulParses: ollamaResult.success ? 1 : 0,
+        failedParses: !ollamaResult.success ? 1 : 0,
+        averageProcessingTime: ollamaResult.processingTime,
+        successRate: ollamaResult.success ? 100 : 0,
+        fastestParse: ollamaResult.processingTime,
+        slowestParse: ollamaResult.processingTime,
+        medianProcessingTime: ollamaResult.processingTime
+      }
+    })
+
+    // Update Traditional metrics
+    await prisma.performanceMetrics.upsert({
+      where: { technologyName: 'traditional' },
+      update: {
+        totalTests: { increment: 1 },
+        successfulParses: traditionalResult.success ? { increment: 1 } : undefined,
+        failedParses: !traditionalResult.success ? { increment: 1 } : undefined,
+        lastUpdated: new Date()
+      },
+      create: {
+        technologyName: 'traditional',
+        totalTests: 1,
+        successfulParses: traditionalResult.success ? 1 : 0,
+        failedParses: !traditionalResult.success ? 1 : 0,
+        averageProcessingTime: traditionalResult.processingTime,
+        successRate: traditionalResult.success ? 100 : 0,
+        fastestParse: traditionalResult.processingTime,
+        slowestParse: traditionalResult.processingTime,
+        medianProcessingTime: traditionalResult.processingTime
+      }
+    })
+
+    logger.log('info', 'Performance metrics updated successfully')
+  } catch (error) {
+    logger.log('error', 'Failed to update performance metrics', { error: String(error) })
+    // Don't throw the error - metrics update failure shouldn't break the API
+  }
+}
+
+/**
  * Validate request body
  */
 function validateRequest(body: any): ImportComparisonRequest | null {
@@ -351,6 +450,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<ImportCompari
       ollamaTime: ollamaResult.processingTime,
       traditionalTime: traditionalResult.processingTime
     })
+
+    // Save results to database (run in parallel with response)
+    await Promise.all([
+      saveComparisonResult(comparisonId, url, ollamaResult, traditionalResult, logger),
+      updatePerformanceMetrics(ollamaResult, traditionalResult, logger)
+    ])
 
     // Structure response
     const response: ImportComparisonResponse = {
