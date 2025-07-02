@@ -5,6 +5,7 @@
 
 import { promises as fs } from 'fs'
 import { spawn } from 'child_process'
+import { VideoImportErrorCode } from '@/types/video-import'
 
 export interface TranscriptionOptions {
   model?: string
@@ -23,8 +24,13 @@ export interface TranscriptionResult {
   duration?: number
   segments?: TranscriptionSegment[]
   error?: string
+  errorCode?: VideoImportErrorCode
   warnings?: string[]
   processingTime?: number
+  retryable?: boolean
+  suggestions?: string[]
+  retryCount?: number
+  partialTranscription?: string
 }
 
 export interface TranscriptionSegment {
@@ -56,7 +62,7 @@ const DEFAULT_CONFIG = {
 }
 
 /**
- * Transcribe audio file using Ollama's Whisper model
+ * Transcribe audio file using Ollama's Whisper model with comprehensive error handling and retry logic
  */
 export async function transcribeAudio(
   audioPath: string,
@@ -73,11 +79,13 @@ export async function transcribeAudio(
     // Step 1: Validate audio file exists and is readable
     const audioValidation = await validateAudioFile(audioPath)
     if (!audioValidation.isValid) {
-      return {
-        success: false,
-        error: audioValidation.error || 'Invalid audio file',
-        warnings
-      }
+      const errorCode = categorizeTranscriptionError(audioValidation.error || '')
+      return createTranscriptionErrorResult(
+        audioValidation.error || 'Invalid audio file',
+        errorCode,
+        warnings,
+        startTime
+      )
     }
 
     // Step 2: Check if Ollama is available and model is ready
@@ -85,35 +93,39 @@ export async function transcribeAudio(
     
     const modelCheck = await checkOllamaModel(config.model)
     if (!modelCheck.available) {
-      return {
-        success: false,
-        error: modelCheck.error || 'Ollama model not available',
-        warnings
-      }
+      const errorCode = categorizeTranscriptionError(modelCheck.error || '')
+      return createTranscriptionErrorResult(
+        modelCheck.error || 'Ollama model not available',
+        errorCode,
+        warnings,
+        startTime
+      )
     }
 
-    // Step 3: Determine if we need to chunk the audio
+    // Step 3: Determine if we need to chunk the audio and transcribe with retry logic
     const audioInfo = audioValidation.info!
     const needsChunking = audioInfo.duration && audioInfo.duration > config.chunkSize
 
     if (needsChunking) {
       onProgress?.({ stage: 'processing', message: 'Processing audio in chunks...', progress: 20 })
-      return await transcribeInChunks(audioPath, audioInfo, config, onProgress, warnings, startTime)
+      return await transcribeInChunksWithRetry(audioPath, audioInfo, config, onProgress, warnings, startTime)
     } else {
       onProgress?.({ stage: 'processing', message: 'Transcribing audio...', progress: 20 })
-      return await transcribeSingle(audioPath, audioInfo, config, onProgress, warnings, startTime)
+      return await transcribeSingleWithRetry(audioPath, audioInfo, config, onProgress, warnings, startTime)
     }
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorCode = categorizeTranscriptionError(errorMessage)
+    
     onProgress?.({ stage: 'failed', message: `Transcription failed: ${errorMessage}` })
 
-    return {
-      success: false,
-      error: `Transcription failed: ${errorMessage}`,
+    return createTranscriptionErrorResult(
+      `Transcription failed: ${errorMessage}`,
+      errorCode,
       warnings,
-      processingTime: Date.now() - startTime
-    }
+      startTime
+    )
   }
 }
 
@@ -538,4 +550,300 @@ function estimateConfidence(text: string): number {
   if ((text.match(/\s+/g) || []).length < 3) confidence -= 0.1 // Very few words
 
   return Math.max(0, Math.min(1, confidence))
+}
+
+/**
+ * Categorize transcription errors into specific error codes
+ */
+function categorizeTranscriptionError(error: string): VideoImportErrorCode {
+  const lowerError = error.toLowerCase()
+  
+  if (lowerError.includes('timeout') || lowerError.includes('timed out')) {
+    return VideoImportErrorCode.TIMEOUT
+  }
+  if (lowerError.includes('model not found') || lowerError.includes('not available')) {
+    return VideoImportErrorCode.TRANSCRIPTION_FAILED
+  }
+  if (lowerError.includes('no speech') || lowerError.includes('too short')) {
+    return VideoImportErrorCode.NO_SPEECH_DETECTED
+  }
+  if (lowerError.includes('audio') || lowerError.includes('empty') || lowerError.includes('too large')) {
+    return VideoImportErrorCode.AUDIO_EXTRACTION_FAILED
+  }
+  if (lowerError.includes('connection') || lowerError.includes('network') || lowerError.includes('service')) {
+    return VideoImportErrorCode.TRANSCRIPTION_FAILED
+  }
+  
+  return VideoImportErrorCode.UNKNOWN_ERROR
+}
+
+/**
+ * Create a standardized transcription error result
+ */
+function createTranscriptionErrorResult(
+  error: string,
+  errorCode: VideoImportErrorCode,
+  warnings: string[],
+  startTime: number,
+  retryable: boolean = false,
+  retryCount: number = 0,
+  partialTranscription?: string
+): TranscriptionResult {
+  return {
+    success: false,
+    error,
+    errorCode,
+    warnings,
+    retryable,
+    suggestions: getTranscriptionSuggestions(errorCode),
+    retryCount,
+    processingTime: Date.now() - startTime,
+    partialTranscription
+  }
+}
+
+/**
+ * Get user-friendly suggestions for transcription error codes
+ */
+function getTranscriptionSuggestions(errorCode: VideoImportErrorCode): string[] {
+  const suggestions: Record<VideoImportErrorCode, string[]> = {
+    [VideoImportErrorCode.INVALID_URL]: [
+      'Check that the URL is complete and properly formatted',
+      'Ensure the URL is from a supported platform'
+    ],
+    [VideoImportErrorCode.UNSUPPORTED_PLATFORM]: [
+      'Only Instagram, TikTok, and YouTube Shorts are supported'
+    ],
+    [VideoImportErrorCode.VIDEO_DOWNLOAD_FAILED]: [
+      'Check if the video is publicly accessible',
+      'Verify the video still exists on the platform'
+    ],
+    [VideoImportErrorCode.AUDIO_EXTRACTION_FAILED]: [
+      'Check if the audio file is valid',
+      'Ensure the file isn\'t corrupted',
+      'Try a different audio format'
+    ],
+    [VideoImportErrorCode.TRANSCRIPTION_FAILED]: [
+      'Check if Ollama service is running',
+      'Verify the Whisper model is installed',
+      'Try a different audio quality or format'
+    ],
+    [VideoImportErrorCode.NO_SPEECH_DETECTED]: [
+      'Ensure the video contains clear spoken content',
+      'Check the audio volume levels',
+      'Try a video with more distinct speech'
+    ],
+    [VideoImportErrorCode.RECIPE_STRUCTURING_FAILED]: [
+      'Make sure the video is about cooking or recipes',
+      'Try a video with clearer recipe instructions'
+    ],
+    [VideoImportErrorCode.TIMEOUT]: [
+      'Try a shorter audio file',
+      'Check system resources and performance',
+      'Increase timeout settings if possible'
+    ],
+    [VideoImportErrorCode.RATE_LIMITED]: [
+      'Wait a few minutes before trying again'
+    ],
+    [VideoImportErrorCode.PRIVATE_CONTENT]: [
+      'Make sure the video is publicly accessible'
+    ],
+    [VideoImportErrorCode.CONTENT_UNAVAILABLE]: [
+      'The video may have been deleted or made private'
+    ],
+    [VideoImportErrorCode.QUOTA_EXCEEDED]: [
+      'Processing quota has been exceeded'
+    ],
+    [VideoImportErrorCode.UNKNOWN_ERROR]: [
+      'Try again in a few minutes',
+      'Check system resources',
+      'Contact support if the problem persists'
+    ]
+  }
+  
+  return suggestions[errorCode] || suggestions[VideoImportErrorCode.UNKNOWN_ERROR] || []
+}
+
+/**
+ * Check if a transcription error is retryable
+ */
+function isTranscriptionErrorRetryable(errorCode: VideoImportErrorCode, errorMessage: string): boolean {
+  const retryableErrors = [
+    VideoImportErrorCode.TIMEOUT,
+    VideoImportErrorCode.TRANSCRIPTION_FAILED,
+    VideoImportErrorCode.UNKNOWN_ERROR
+  ]
+  
+  if (retryableErrors.includes(errorCode)) {
+    return true
+  }
+  
+  // Check for transient errors in message
+  const lowerMessage = errorMessage.toLowerCase()
+  const transientKeywords = [
+    'connection', 'network', 'temporary', 'service unavailable',
+    'timeout', '503', '502', '500'
+  ]
+  
+  return transientKeywords.some(keyword => lowerMessage.includes(keyword))
+}
+
+/**
+ * Transcribe single audio file with retry logic
+ */
+async function transcribeSingleWithRetry(
+  audioPath: string,
+  audioInfo: { duration?: number; size?: number; format?: string },
+  config: Required<TranscriptionOptions> & typeof DEFAULT_CONFIG,
+  onProgress?: (progress: TranscriptionProgress) => void,
+  warnings: string[] = [],
+  startTime: number = Date.now()
+): Promise<TranscriptionResult> {
+  let lastError = ''
+  let lastErrorCode = VideoImportErrorCode.UNKNOWN_ERROR
+  let partialResult = ''
+
+  for (let attempt = 1; attempt <= config.maxRetries; attempt++) {
+    try {
+      const result = await transcribeSingle(
+        audioPath,
+        audioInfo,
+        config,
+        onProgress,
+        [],
+        Date.now()
+      )
+
+      if (result.success) {
+        return { ...result, retryCount: attempt - 1, warnings: warnings.concat(result.warnings || []) }
+      }
+
+      // Store error details
+      lastError = result.error || 'Unknown transcription error'
+      lastErrorCode = categorizeTranscriptionError(lastError)
+      
+      // Check if we got any partial transcription
+      if (result.text && result.text.length > 0) {
+        partialResult = result.text
+      }
+
+      // Check if error is retryable
+      const isRetryable = isTranscriptionErrorRetryable(lastErrorCode, lastError)
+      
+      if (!isRetryable || attempt === config.maxRetries) {
+        return createTranscriptionErrorResult(
+          lastError,
+          lastErrorCode,
+          warnings.concat(result.warnings || []),
+          startTime,
+          isRetryable,
+          attempt,
+          partialResult || undefined
+        )
+      }
+
+      // Wait before retry with exponential backoff
+      const delay = 2000 * Math.pow(2, attempt - 1) // 2s, 4s, 8s, etc.
+      onProgress?.({
+        stage: 'processing',
+        message: `Retry ${attempt}/${config.maxRetries} in ${Math.round(delay/1000)}s...`,
+        progress: 20 + (attempt * 10)
+      })
+      
+      await new Promise(resolve => setTimeout(resolve, delay))
+
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : 'Unknown error'
+      lastErrorCode = VideoImportErrorCode.UNKNOWN_ERROR
+    }
+  }
+
+  return createTranscriptionErrorResult(
+    lastError,
+    lastErrorCode,
+    warnings,
+    startTime,
+    false,
+    config.maxRetries,
+    partialResult || undefined
+  )
+}
+
+/**
+ * Transcribe audio in chunks with retry logic
+ */
+async function transcribeInChunksWithRetry(
+  audioPath: string,
+  audioInfo: { duration?: number; size?: number; format?: string },
+  config: Required<TranscriptionOptions> & typeof DEFAULT_CONFIG,
+  onProgress?: (progress: TranscriptionProgress) => void,
+  warnings: string[] = [],
+  startTime: number = Date.now()
+): Promise<TranscriptionResult> {
+  let lastError = ''
+  let lastErrorCode = VideoImportErrorCode.UNKNOWN_ERROR
+  let bestPartialResult: TranscriptionResult | null = null
+
+  for (let attempt = 1; attempt <= config.maxRetries; attempt++) {
+    try {
+      const result = await transcribeInChunks(
+        audioPath,
+        audioInfo,
+        config,
+        onProgress,
+        [],
+        Date.now()
+      )
+
+      if (result.success) {
+        return { ...result, retryCount: attempt - 1, warnings: warnings.concat(result.warnings || []) }
+      }
+
+      // Keep track of the best partial result (most text)
+      if (result.text && (!bestPartialResult || (result.text.length > (bestPartialResult.text?.length || 0)))) {
+        bestPartialResult = result
+      }
+
+      lastError = result.error || 'Unknown chunked transcription error'
+      lastErrorCode = categorizeTranscriptionError(lastError)
+      
+      const isRetryable = isTranscriptionErrorRetryable(lastErrorCode, lastError)
+      
+      if (!isRetryable || attempt === config.maxRetries) {
+        return createTranscriptionErrorResult(
+          lastError,
+          lastErrorCode,
+          warnings.concat(result.warnings || []),
+          startTime,
+          isRetryable,
+          attempt,
+          bestPartialResult?.text
+        )
+      }
+
+      // Wait before retry
+      const delay = 3000 * Math.pow(1.5, attempt - 1) // 3s, 4.5s, 6.75s, etc.
+      onProgress?.({
+        stage: 'processing',
+        message: `Retry ${attempt}/${config.maxRetries} (chunked) in ${Math.round(delay/1000)}s...`,
+        progress: 20 + (attempt * 10)
+      })
+      
+      await new Promise(resolve => setTimeout(resolve, delay))
+
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : 'Unknown error'
+      lastErrorCode = VideoImportErrorCode.UNKNOWN_ERROR
+    }
+  }
+
+  return createTranscriptionErrorResult(
+    lastError,
+    lastErrorCode,
+    warnings,
+    startTime,
+    false,
+    config.maxRetries,
+    bestPartialResult?.text
+  )
 } 

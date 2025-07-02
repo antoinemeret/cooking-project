@@ -5,7 +5,7 @@
  * recipe import system to establish benchmarks for comparison against traditional parsing.
  */
 
-import { TEST_DATASETS, TestUrl } from '@/data/test-dataset'
+import { TEST_DATASETS, TEST_URLS } from '@/data/test-dataset'
 import { prisma } from '@/lib/prisma'
 
 export interface BaselineMetrics {

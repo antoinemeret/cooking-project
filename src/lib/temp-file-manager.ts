@@ -1,19 +1,36 @@
 import { promises as fs } from 'fs'
 import * as path from 'path'
 import { randomUUID } from 'crypto'
+import { spawn } from 'child_process'
 
 /**
  * Temporary file manager for video processing
  * Handles creation, cleanup and resource management of temporary files
  */
+export interface ResourceTracker {
+  sessionId: string
+  startTime: number
+  activePaths: Set<string>
+  activeProcesses: Set<number>
+  memoryUsage: number
+  cleanupCallbacks: Map<string, () => Promise<void>>
+  abortController?: AbortController
+}
+
 export class TempFileManager {
   private tempDir: string
   private activePaths: Set<string> = new Set()
   private cleanupCallbacks: Map<string, () => Promise<void>> = new Map()
+  private activeSessions: Map<string, ResourceTracker> = new Map()
+  private activeProcesses: Set<number> = new Set()
+  private cleanupInProgress: boolean = false
 
   constructor(baseDir?: string) {
     // Use configured temp directory from Next.js config or fallback
     this.tempDir = baseDir || process.env.VIDEO_TEMP_DIR || '/tmp/video-processing'
+    
+    // Initialize periodic cleanup
+    this.initializePeriodicCleanup()
   }
 
   /**
@@ -24,6 +41,168 @@ export class TempFileManager {
       await fs.mkdir(this.tempDir, { recursive: true })
     } catch (error) {
       throw new Error(`Failed to create temp directory ${this.tempDir}: ${error}`)
+    }
+  }
+
+  /**
+   * Initialize periodic cleanup tasks
+   */
+  private initializePeriodicCleanup(): void {
+    // Cleanup old files every 30 minutes
+    setInterval(() => {
+      this.cleanupOldFiles(1).catch(error => 
+        console.warn('Periodic cleanup failed:', error)
+      )
+    }, 30 * 60 * 1000)
+
+    // Monitor resource usage every 5 minutes
+    setInterval(() => {
+      this.monitorResourceUsage().catch(error => 
+        console.warn('Resource monitoring failed:', error)
+      )
+    }, 5 * 60 * 1000)
+  }
+
+  /**
+   * Create a new processing session with resource tracking
+   */
+  createSession(abortController?: AbortController): string {
+    const sessionId = randomUUID()
+    const tracker: ResourceTracker = {
+      sessionId,
+      startTime: Date.now(),
+      activePaths: new Set(),
+      activeProcesses: new Set(),
+      memoryUsage: process.memoryUsage().heapUsed,
+      cleanupCallbacks: new Map(),
+      abortController
+    }
+
+    this.activeSessions.set(sessionId, tracker)
+    
+    // Set up abort handling
+    if (abortController) {
+      abortController.signal.addEventListener('abort', () => {
+        this.forceCleanupSession(sessionId).catch(error =>
+          console.error(`Failed to cleanup aborted session ${sessionId}:`, error)
+        )
+      })
+    }
+
+    return sessionId
+  }
+
+  /**
+   * Track process for a session
+   */
+  trackProcess(sessionId: string, processId: number): void {
+    const tracker = this.activeSessions.get(sessionId)
+    if (tracker) {
+      tracker.activeProcesses.add(processId)
+      this.activeProcesses.add(processId)
+    }
+  }
+
+  /**
+   * Untrack process for a session
+   */
+  untrackProcess(sessionId: string, processId: number): void {
+    const tracker = this.activeSessions.get(sessionId)
+    if (tracker) {
+      tracker.activeProcesses.delete(processId)
+      this.activeProcesses.delete(processId)
+    }
+  }
+
+  /**
+   * Monitor resource usage and cleanup if necessary
+   */
+  private async monitorResourceUsage(): Promise<void> {
+    const memUsage = process.memoryUsage()
+    const heapUsedMB = memUsage.heapUsed / 1024 / 1024
+
+    // If heap usage is over 500MB, trigger cleanup
+    if (heapUsedMB > 500) {
+      console.warn(`High memory usage detected: ${heapUsedMB.toFixed(2)}MB`)
+      await this.emergencyCleanup()
+    }
+
+    // Check for stuck sessions (running over 5 minutes)
+    const now = Date.now()
+    for (const [sessionId, tracker] of this.activeSessions) {
+      const age = now - tracker.startTime
+      if (age > 5 * 60 * 1000) { // 5 minutes
+        console.warn(`Stuck session detected: ${sessionId}, age: ${Math.round(age/1000)}s`)
+        await this.forceCleanupSession(sessionId)
+      }
+    }
+  }
+
+  /**
+   * Emergency cleanup for resource pressure
+   */
+  private async emergencyCleanup(): Promise<void> {
+    console.log('Starting emergency cleanup...')
+    
+    // Kill old processes first
+    for (const pid of this.activeProcesses) {
+      try {
+        process.kill(pid, 'SIGTERM')
+        console.log(`Terminated process ${pid}`)
+      } catch (error) {
+        // Process might already be dead
+      }
+    }
+
+    // Clean up old sessions
+    const oldSessions = Array.from(this.activeSessions.entries())
+      .filter(([_, tracker]) => Date.now() - tracker.startTime > 2 * 60 * 1000) // 2 minutes
+      .map(([sessionId]) => sessionId)
+
+    for (const sessionId of oldSessions) {
+      await this.forceCleanupSession(sessionId)
+    }
+
+    // Force garbage collection if available
+    if (global.gc) {
+      global.gc()
+    }
+  }
+
+  /**
+   * Force cleanup of a session (for timeouts/cancellation)
+   */
+  async forceCleanupSession(sessionId: string): Promise<void> {
+    const tracker = this.activeSessions.get(sessionId)
+    if (!tracker) return
+
+    console.log(`Force cleaning up session: ${sessionId}`)
+
+    try {
+      // Kill all active processes for this session
+      for (const pid of tracker.activeProcesses) {
+        try {
+          process.kill(pid, 'SIGKILL') // Force kill
+          console.log(`Force killed process ${pid}`)
+        } catch (error) {
+          // Process might already be dead
+        }
+      }
+
+      // Clean up all paths for this session
+      const cleanupPromises = Array.from(tracker.activePaths).map(filePath =>
+        this.cleanupFile(filePath).catch(error =>
+          console.warn(`Failed to cleanup file ${filePath}:`, error)
+        )
+      )
+
+      await Promise.allSettled(cleanupPromises)
+
+      // Remove session tracker
+      this.activeSessions.delete(sessionId)
+
+    } catch (error) {
+      console.error(`Error during force cleanup of session ${sessionId}:`, error)
     }
   }
 
@@ -253,15 +432,53 @@ export async function withTempSession<T>(
     videoPath: string
     audioPath: string
     transcriptPath: string
-  }) => Promise<T>
+  }, sessionId: string) => Promise<T>,
+  abortController?: AbortController
 ): Promise<T> {
-  const paths = tempFileManager.createSessionPaths()
+  const sessionId = tempFileManager.createSession(abortController)
+  const paths = tempFileManager.createSessionPaths(sessionId)
   
   try {
     await tempFileManager.ensureSessionDir(paths.sessionDir)
-    return await operation(paths)
+    return await operation(paths, sessionId)
   } finally {
     await tempFileManager.cleanupSession(paths.sessionDir)
+    await tempFileManager.forceCleanupSession(sessionId)
+  }
+}
+
+export async function withTrackedTempSession<T>(
+  operation: (
+    paths: {
+      sessionDir: string
+      videoPath: string
+      audioPath: string
+      transcriptPath: string
+    }, 
+    sessionId: string,
+    tracker: {
+      trackProcess: (pid: number) => void
+      untrackProcess: (pid: number) => void
+      isAborted: () => boolean
+    }
+  ) => Promise<T>,
+  abortController?: AbortController
+): Promise<T> {
+  const sessionId = tempFileManager.createSession(abortController)
+  const paths = tempFileManager.createSessionPaths(sessionId)
+  
+  const tracker = {
+    trackProcess: (pid: number) => tempFileManager.trackProcess(sessionId, pid),
+    untrackProcess: (pid: number) => tempFileManager.untrackProcess(sessionId, pid),
+    isAborted: () => abortController?.signal.aborted || false
+  }
+  
+  try {
+    await tempFileManager.ensureSessionDir(paths.sessionDir)
+    return await operation(paths, sessionId, tracker)
+  } finally {
+    await tempFileManager.cleanupSession(paths.sessionDir)
+    await tempFileManager.forceCleanupSession(sessionId)
   }
 }
 
