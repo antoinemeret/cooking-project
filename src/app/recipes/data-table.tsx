@@ -31,12 +31,24 @@ import {
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
 import { toast } from "sonner"
+import { detectVideoUrl, getPlatformDisplayName } from "@/lib/video-url-detector"
+import { VideoProgressTracker, VideoProcessingProgress, VideoProcessingStage } from "@/components/recipes/VideoProgressTracker"
+import { ExtractedRecipeData, VideoPlatform } from "@/types/video-import"
 
 type ImportedRecipe = {
   id?: number
   title: string
   rawIngredients: string[]
   instructions: string
+  // Video-specific metadata
+  sourceUrl?: string
+  transcription?: string
+  videoMetadata?: {
+    platform: VideoPlatform
+    videoId?: string
+    duration?: number
+    extractedAt: string
+  }
 }
 
 export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], onRefresh: () => void, loading: boolean }) {
@@ -56,6 +68,10 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
   const [importUrl, setImportUrl] = useState("")
   const [importError, setImportError] = useState("")
 
+  // Video processing progress state
+  const [videoProgress, setVideoProgress] = useState<VideoProcessingProgress | null>(null)
+  const [isVideoProcessing, setIsVideoProcessing] = useState(false)
+
   const openReviewDialog = (recipe: ImportedRecipe) => {
     setImportedRecipe(recipe)
     setIsManualMode(false)
@@ -69,13 +85,172 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
   const handleUrlImport = async () => {
     if (!importUrl) return
     setIsImporting(true)
-    setImportStatus("Scraping URL...")
     setImportError("")
+
+    // Detect if this is a video URL
+    const videoDetection = detectVideoUrl(importUrl)
+    
+    if (videoDetection.isVideoUrl) {
+      // Handle video URL with streaming response
+      await handleVideoUrlImport(importUrl, videoDetection.platform)
+    } else {
+      // Handle regular URL with existing scraping logic
+      await handleRegularUrlImport(importUrl)
+    }
+  }
+
+  const handleVideoUrlImport = async (url: string, platform: any) => {
+    const platformName = getPlatformDisplayName(platform)
+    
+    // Initialize video processing state
+    setIsVideoProcessing(true)
+    setVideoProgress({
+      stage: 'analyzing',
+      message: `Initializing ${platformName} video processing...`,
+      platform: platformName,
+      timestamp: Date.now()
+    })
+    setImportStatus(`Processing ${platformName} video...`)
+    
+    try {
+      const response = await fetch('/api/recipes/import-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+
+      if (!response.ok || !response.body) {
+        throw new Error('Video import failed')
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n').filter(line => line.trim())
+        
+        for (const line of lines) {
+          try {
+            const eventData = JSON.parse(line)
+            
+            if (eventData.status) {
+              // Map API status to VideoProcessingStage
+              const stageMapping: Record<string, VideoProcessingStage> = {
+                analyzing: 'analyzing',
+                downloading: 'downloading', 
+                transcribing: 'transcribing',
+                structuring: 'structuring',
+                done: 'done',
+                error: 'error'
+              }
+
+              const stage = stageMapping[eventData.status] || 'analyzing'
+              
+              // Update video progress with detailed information
+              setVideoProgress({
+                stage,
+                message: eventData.message || eventData.status,
+                platform: platformName,
+                timestamp: Date.now(),
+                error: eventData.error
+              })
+
+              // Update import status for backwards compatibility
+              const statusMessages: Record<string, string> = {
+                analyzing: 'Analyzing video URL...',
+                downloading: 'Downloading video content...',
+                transcribing: 'Converting speech to text...',
+                structuring: 'Extracting recipe information...',
+                done: 'Processing complete!',
+                error: 'Processing failed'
+              }
+              setImportStatus(statusMessages[eventData.status] || `Processing ${eventData.status}...`)
+            }
+
+            if (eventData.status === 'done' && eventData.data) {
+              // Convert video import response to expected format with metadata
+              const videoRecipeData: ExtractedRecipeData = eventData.data
+              const videoRecipe: ImportedRecipe = {
+                title: videoRecipeData.title,
+                rawIngredients: videoRecipeData.rawIngredients || [],
+                instructions: videoRecipeData.instructions || '',
+                sourceUrl: videoRecipeData.sourceUrl,
+                transcription: videoRecipeData.transcription,
+                videoMetadata: videoRecipeData.metadata ? {
+                  platform: videoRecipeData.metadata.platform,
+                  videoId: videoRecipeData.metadata.videoId,
+                  duration: videoRecipeData.metadata.duration,
+                  extractedAt: videoRecipeData.metadata.extractedAt || new Date().toISOString()
+                } : {
+                  platform: platform.toLowerCase() as VideoPlatform,
+                  extractedAt: new Date().toISOString()
+                }
+              }
+              
+              // Final success state
+              setVideoProgress({
+                stage: 'done',
+                message: 'Recipe successfully extracted from video!',
+                platform: platformName,
+                timestamp: Date.now()
+              })
+              
+              openReviewDialog(videoRecipe)
+              setImportStatus('Video processed successfully!')
+              break
+            }
+
+            if (eventData.status === 'error') {
+              setVideoProgress({
+                stage: 'error',
+                error: eventData.error || 'Video processing failed',
+                platform: platformName,
+                timestamp: Date.now()
+              })
+              throw new Error(eventData.error || 'Video processing failed')
+            }
+          } catch (parseError) {
+            // Ignore JSON parsing errors for partial chunks
+            continue
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Video import error:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to process video. Please try again.'
+      
+      setVideoProgress({
+        stage: 'error',
+        error: errorMessage,
+        platform: platformName,
+        timestamp: Date.now()
+      })
+      
+      setImportError(errorMessage)
+      setImportStatus('Video processing failed')
+    } finally {
+      setIsImporting(false)
+      // Clear video processing state after a delay
+      setTimeout(() => {
+        setIsVideoProcessing(false)
+        setVideoProgress(null)
+        setImportStatus("Add new")
+      }, 3000)
+    }
+  }
+
+  const handleRegularUrlImport = async (url: string) => {
+    setImportStatus("Scraping URL...")
+    
     try {
       const res = await fetch(`/api/scrape`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: importUrl }),
+        body: JSON.stringify({ url }),
       })
       if (res.ok) {
         const { recipe: newRecipe } = await res.json()
@@ -85,9 +260,10 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       }
     } catch (err) {
       setImportError("An error occurred while importing from URL.")
+    } finally {
+      setIsImporting(false)
+      setImportStatus("Add new")
     }
-    setIsImporting(false)
-    setImportStatus("Add new")
   }
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -198,7 +374,21 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
             onUrlImport={handleUrlImport}
             loading={isImporting}
             error={importError}
+            // Pass video processing state
+            videoProgress={videoProgress}
+            isVideoProcessing={isVideoProcessing}
           />
+          
+          {/* Compact Video Progress Tracker - shown when dialog is closed and video is processing */}
+          {isVideoProcessing && videoProgress && !isImportDialogOpen && (
+            <div className="flex-1 max-w-md">
+              <VideoProgressTracker 
+                progress={videoProgress}
+                compact={true}
+              />
+            </div>
+          )}
+          
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button disabled={isImporting}>
@@ -222,7 +412,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                   setIsImportDialogOpen(true)
                 }}
               >
-                Import from URL
+                Import from URL or Video
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handlePhotoImportClick}>
                 Import from Photo
@@ -375,6 +565,9 @@ type ImportRecipeDialogProps = {
   onUrlImport: () => void
   loading: boolean
   error: string
+  // Video processing props
+  videoProgress: VideoProcessingProgress | null
+  isVideoProcessing: boolean
 }
 
 function ImportRecipeDialog({
@@ -391,6 +584,8 @@ function ImportRecipeDialog({
   onUrlImport,
   loading,
   error,
+  videoProgress,
+  isVideoProcessing,
 }: ImportRecipeDialogProps) {
   function handleReset() {
     setIsManualMode(false)
@@ -402,10 +597,27 @@ function ImportRecipeDialog({
     if (!recipe) return
 
     try {
+      // Prepare recipe data with video metadata if available
+      const recipeData = {
+        ...recipe,
+        // Include video metadata in tags field for storage
+        ...(recipe.sourceUrl && recipe.videoMetadata && {
+          tags: JSON.stringify([
+            ...(recipe.videoMetadata ? [
+              `source:video:${recipe.videoMetadata.platform}`,
+              `extracted:${recipe.videoMetadata.extractedAt}`,
+              ...(recipe.videoMetadata.videoId ? [`video-id:${recipe.videoMetadata.videoId}`] : []),
+              ...(recipe.videoMetadata.duration ? [`duration:${recipe.videoMetadata.duration}s`] : [])
+            ] : []),
+            ...(recipe.sourceUrl ? [`source-url:${recipe.sourceUrl}`] : [])
+          ])
+        })
+      }
+
       const res = await fetch('/api/recipes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(recipe),
+        body: JSON.stringify(recipeData),
       })
       if (!res.ok) throw new Error('Failed to save recipe')
       const { recipe: savedRecipe } = await res.json()
@@ -455,7 +667,13 @@ function ImportRecipeDialog({
     }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isManualMode ? "Create Recipe" : recipe ? "Review Recipe" : "Import from URL"}</DialogTitle>
+          <DialogTitle>
+            {isManualMode ? "Create Recipe" : 
+             recipe ? (recipe.sourceUrl && recipe.videoMetadata ? 
+               `Review Video Recipe (${recipe.videoMetadata.platform})` : 
+               "Review Recipe") : 
+             "Import from URL"}
+          </DialogTitle>
         </DialogHeader>
         {isManualMode || recipe ? (
           <ValidateRecipeForm
@@ -469,16 +687,49 @@ function ImportRecipeDialog({
           <div className="flex flex-col gap-4">
             <div className="flex gap-2">
               <Input
-                placeholder="Enter recipe URL"
+                placeholder="Enter recipe URL or video link (Instagram, TikTok, YouTube Shorts)"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 disabled={loading}
               />
               <Button onClick={onUrlImport} disabled={loading}>
-                {loading ? 'Importing...' : 'Import'}
+                {loading ? 'Processing...' : 'Import'}
               </Button>
             </div>
-            {error && <p className="text-red-500 text-sm">{error}</p>}
+            
+            {/* Video Progress Tracker */}
+            {isVideoProcessing && videoProgress && (
+              <div className="mt-4">
+                <VideoProgressTracker 
+                  progress={videoProgress}
+                  compact={false}
+                />
+              </div>
+            )}
+            
+            {/* Video URL Detection Info */}
+            {url && !isVideoProcessing && (() => {
+              const detection = detectVideoUrl(url)
+              if (detection.isVideoUrl) {
+                return (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                      <span className="text-sm font-medium text-blue-800">
+                        {getPlatformDisplayName(detection.platform)} video detected
+                      </span>
+                    </div>
+                    <p className="text-xs text-blue-600 mt-1">
+                      This will extract the recipe from the video's audio using AI transcription
+                    </p>
+                  </div>
+                )
+              }
+              return null
+            })()}
+            
+            {/* Error Message */}
+            {error && !isVideoProcessing && <p className="text-red-500 text-sm">{error}</p>}
           </div>
         )}
       </DialogContent>
@@ -501,6 +752,8 @@ function ValidateRecipeForm({
   isManualMode,
   loading,
 }: ValidateRecipeFormProps) {
+  const [showTranscription, setShowTranscription] = useState(false)
+  
   const handleRecipeChange = (
     field: keyof ImportedRecipe,
     value: string | string[]
@@ -511,37 +764,132 @@ function ValidateRecipeForm({
   };
 
   const currentRecipe = recipe || { title: '', rawIngredients: [], instructions: '' };
+  const isVideoImport = currentRecipe.sourceUrl && currentRecipe.videoMetadata
 
   if (!recipe && !isManualMode) return null
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Video Source Information */}
+      {isVideoImport && (
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+            <h3 className="font-semibold text-blue-900">Video Recipe Source</h3>
+          </div>
+          
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-700">Platform:</span>
+              <span className="bg-white px-2 py-1 rounded text-blue-700 font-medium capitalize">
+                {currentRecipe.videoMetadata?.platform || 'Unknown'}
+              </span>
+            </div>
+            
+            {currentRecipe.sourceUrl && (
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-gray-700">Source:</span>
+                <a 
+                  href={currentRecipe.sourceUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline truncate max-w-xs"
+                >
+                  {currentRecipe.sourceUrl}
+                </a>
+              </div>
+            )}
+            
+            {currentRecipe.videoMetadata?.duration && (
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-gray-700">Duration:</span>
+                <span className="text-gray-600">{Math.round(currentRecipe.videoMetadata.duration)}s</span>
+              </div>
+            )}
+            
+            <div className="flex items-center gap-2">
+              <span className="font-medium text-gray-700">Extracted:</span>
+              <span className="text-gray-600">
+                {currentRecipe.videoMetadata?.extractedAt ? 
+                  new Date(currentRecipe.videoMetadata.extractedAt).toLocaleString() : 
+                  'Just now'
+                }
+              </span>
+            </div>
+            
+            {currentRecipe.transcription && (
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowTranscription(!showTranscription)}
+                  className="text-xs"
+                >
+                  {showTranscription ? 'Hide' : 'View'} Transcription
+                </Button>
+                
+                {showTranscription && (
+                  <div className="mt-2 p-3 bg-gray-50 rounded border max-h-32 overflow-y-auto">
+                    <p className="text-xs text-gray-700 leading-relaxed">
+                      {currentRecipe.transcription}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Recipe Fields */}
       <div>
-        <label>Title</label>
+        <label className="block text-sm font-medium mb-1">Title</label>
         <Input
           value={currentRecipe.title}
           onChange={(e) => handleRecipeChange('title', e.target.value)}
+          placeholder="Enter recipe title"
         />
       </div>
+      
       <div>
-        <label>Ingredients</label>
+        <label className="block text-sm font-medium mb-1">Ingredients</label>
         <textarea
-          className="w-full p-2 border rounded"
+          className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           rows={5}
           value={(currentRecipe.rawIngredients || []).join('\n')}
-          onChange={(e) => handleRecipeChange('rawIngredients', e.target.value.split('\n'))}
+          onChange={(e) => handleRecipeChange('rawIngredients', e.target.value.split('\n').filter(line => line.trim()))}
+          placeholder="Enter ingredients, one per line"
         />
+        <p className="text-xs text-gray-500 mt-1">Enter each ingredient on a new line</p>
       </div>
+      
       <div>
-        <label>Instructions</label>
+        <label className="block text-sm font-medium mb-1">Instructions</label>
         <textarea
-          className="w-full p-2 border rounded"
+          className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           rows={8}
           value={currentRecipe.instructions}
           onChange={(e) => handleRecipeChange('instructions', e.target.value)}
+          placeholder="Enter cooking instructions"
         />
       </div>
-      <Button onClick={onValidate} disabled={loading}>{loading ? 'Saving...' : 'Save Recipe'}</Button>
+      
+      {/* Action Buttons */}
+      <div className="flex gap-2 pt-2">
+        <Button onClick={onValidate} disabled={loading} className="flex-1">
+          {loading ? 'Saving...' : 'Save Recipe'}
+        </Button>
+        
+        {isVideoImport && (
+          <Button 
+            variant="outline" 
+            onClick={() => window.open(currentRecipe.sourceUrl, '_blank')}
+            className="px-3"
+          >
+            View Source
+          </Button>
+        )}
+      </div>
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { promises as fs } from 'fs'
 import * as path from 'path'
 import { withTempSession } from '@/lib/temp-file-manager'
 import { validateVideoUrl, getPlatformDisplayName } from '@/lib/video-url-validator'
+
 import { 
   createProgressResponse, 
   createSuccessResponse, 
@@ -22,33 +23,39 @@ import { prisma } from '@/lib/prisma'
  */
 
 const getRecipeStructuringPrompt = (transcription: string, metadata?: { title?: string; ingredients?: string[] }) => `
-You are an expert recipe parser. Your task is to analyze the following video transcription and extract a structured recipe.
+You are an expert recipe extraction AI. Extract a recipe from this video transcription.
 
-${metadata?.title ? `Video Title: ${metadata.title}` : ''}
-${metadata?.ingredients ? `Potential Ingredients (from video description): ${metadata.ingredients.join(', ')}` : ''}
+TRANSCRIPTION (in French):
+${transcription}
 
-Follow these rules:
-1. Extract the recipe title (use video title as fallback if no clear title in transcription)
-2. Identify all ingredients mentioned with quantities when available
-3. Extract step-by-step cooking instructions from the spoken content
-4. The output MUST be a valid JSON object
+IMPORTANT: Since the transcription is in French, respond entirely in French.
 
-Expected output format:
+Extract and structure this into a recipe with this JSON format:
+
 {
-  "title": "Recipe Name",
-  "rawIngredients": [
-    "1 cup flour",
-    "2 eggs",
-    "1/2 tsp salt"
+  "title": "Nom de la recette en français",
+  "rawIngredients": ["ingrédient 1", "ingrédient 2", "..."],
+  "instructions": [
+    {
+      "text": "Description de l'étape en français",
+      "order": 1
+    },
+    {
+      "text": "Description de l'étape suivante en français", 
+      "order": 2
+    }
   ],
-  "instructions": "Step 1: Mix ingredients. Step 2: Cook for 10 minutes. Step 3: Serve hot."
+  "language": "fr",
+  "confidence": "high/medium/low"
 }
 
-Video Transcription:
----
-${transcription}
----
-`
+RULES:
+1. Title, ingredients, and instructions must be in French
+2. Extract all mentioned ingredients 
+3. Create clear step-by-step instructions
+4. Return only valid JSON
+
+${metadata ? `Metadata: ${JSON.stringify(metadata, null, 2)}` : ''}`
 
 /**
  * Enhanced request validation with detailed error reporting
@@ -198,99 +205,87 @@ function classifyError(error: Error, stage: string): { code: VideoImportErrorCod
   }
 }
 
-/**
- * Extract audio from video using yt-dlp
- */
-function extractAudio(videoUrl: string, outputPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const args = [
-      videoUrl,
-      '--extract-audio',
-      '--audio-format', 'wav',
-      '--output', outputPath.replace('.wav', '.%(ext)s'),
-      '--no-playlist',
-      '--max-duration', '600', // Max 10 minutes
-      '--format', 'worst[height<=480]' // Lower quality for faster processing
-    ]
 
-    const child = spawn('yt-dlp', args)
+
+/**
+ * Transcribe audio using local Whisper
+ */
+async function transcribeAudio(audioPath: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const scriptPath = path.join(process.cwd(), 'scripts', 'whisper_transcribe.sh')
+    const child = spawn('bash', [scriptPath, audioPath, 'tiny', 'auto'])
     
+    let output = ''
     let errorOutput = ''
     
+    child.stdout.on('data', (data) => {
+      output += data.toString()
+    })
+
     child.stderr.on('data', (data) => {
       errorOutput += data.toString()
     })
 
     child.on('close', (code) => {
       if (code !== 0) {
-        console.error(`yt-dlp exited with code ${code}: ${errorOutput}`)
-        reject(new Error(`Video download failed: ${errorOutput}`))
-      } else {
-        resolve()
+        console.error(`Whisper transcription failed: ${errorOutput}`)
+        reject(new Error('Audio transcription failed'))
+        return
+      }
+
+      try {
+        const result = JSON.parse(output.trim())
+        if (result.success) {
+          resolve(result.text)
+        } else {
+          reject(new Error(result.error || 'Transcription failed'))
+        }
+      } catch (parseError) {
+        console.error('Failed to parse transcription result:', parseError)
+        reject(new Error('Failed to parse transcription result'))
       }
     })
 
     child.on('error', (err) => {
-      console.error('Failed to start yt-dlp:', err)
-      reject(new Error('Video processing tool not available'))
+      console.error('Failed to start whisper transcription:', err)
+      reject(new Error('Transcription process failed to start'))
     })
   })
-}
-
-/**
- * Transcribe audio using Whisper via Ollama
- */
-async function transcribeAudio(audioPath: string): Promise<string> {
-  try {
-    const ollama = new Ollama()
-    
-    // Read audio file as base64
-    const audioBuffer = await fs.readFile(audioPath)
-    const audioBase64 = audioBuffer.toString('base64')
-    
-    const response = await ollama.generate({
-      model: 'dimavz/whisper-tiny:latest',
-      prompt: 'Transcribe this audio file',
-      images: [audioBase64], // Whisper models accept audio through images parameter
-      stream: false
-    })
-
-    return response.response || ''
-  } catch (error) {
-    console.error('Transcription failed:', error)
-    throw new Error('Audio transcription failed')
-  }
 }
 
 /**
  * Structure recipe using Deepseek
  */
 async function structureRecipe(transcription: string, metadata?: { title?: string; ingredients?: string[] }): Promise<any> {
+  let content = ''
+  let rawResponse = ''
+  
   try {
     const ollama = new Ollama()
     
     const response = await ollama.generate({
-      model: 'deepseek-r1:latest',
+      model: 'mistral:7b-instruct',
       prompt: getRecipeStructuringPrompt(transcription, metadata),
       stream: false
     })
 
-    // Handle deepseek-r1's thinking format
-    let content = response.response
+    rawResponse = response.response
+
+    // Extract JSON from Mistral response
+    content = rawResponse
     
-    // Extract JSON from between <think> tags if present
+    // Try to find JSON in code blocks first
     const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/)
     if (jsonMatch) {
       content = jsonMatch[1]
     } else {
-      // Try to find JSON in the response
+      // Try to find JSON in the response body
       const jsonStart = content.indexOf('{')
       const jsonEnd = content.lastIndexOf('}')
       if (jsonStart !== -1 && jsonEnd !== -1) {
         content = content.substring(jsonStart, jsonEnd + 1)
       }
     }
-
     return JSON.parse(content)
   } catch (error) {
     console.error('Recipe structuring failed:', error)
@@ -336,8 +331,8 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Get processing timeout from environment or default to 60 seconds
-    const processingTimeout = parseInt(process.env.VIDEO_PROCESSING_TIMEOUT || '60000')
+    // Get processing timeout from environment or default to 180 seconds (3 minutes)
+    const processingTimeout = parseInt(process.env.VIDEO_PROCESSING_TIMEOUT || '180000')
 
     // Create streaming response for progress updates
     const stream = new ReadableStream({
@@ -393,7 +388,33 @@ export async function POST(req: NextRequest) {
                 
                 // Extract audio from video with timeout
                 await withTimeout(
-                  extractAudio(validatedUrl, paths.audioPath),
+                  new Promise<void>((resolve, reject) => {
+                    const args = [
+                      validatedUrl,
+                      '--extract-audio',
+                      '--audio-format', 'wav',
+                      '--audio-quality', '5',
+                      '--output', paths.audioPath.replace('.wav', '.%(ext)s'),
+                      '--no-playlist',
+                      '--no-warnings',
+                      '--user-agent', 'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36',
+                      '--postprocessor-args', 'ffmpeg:-ar 16000'
+                    ]
+
+                    const child = spawn('yt-dlp', args)
+                    
+                    child.on('close', (code) => {
+                      if (code !== 0) {
+                        reject(new Error('Video download failed'))
+                      } else {
+                        resolve()
+                      }
+                    })
+
+                    child.on('error', (err) => {
+                      reject(new Error('Video processing tool not available'))
+                    })
+                  }),
                   30000,
                   'Video download and audio extraction timed out'
                 )
@@ -426,7 +447,7 @@ export async function POST(req: NextRequest) {
                 // Structure recipe using AI with timeout
                 const structuredData = await withTimeout(
                   structureRecipe(transcription, metadata),
-                  15000,
+                  60000,
                   'Recipe structuring timed out'
                 )
                 endStage('structuring', true)
@@ -435,7 +456,9 @@ export async function POST(req: NextRequest) {
                 const extractedData: ExtractedRecipeData = {
                   title: structuredData.title,
                   rawIngredients: structuredData.rawIngredients || [],
-                  instructions: structuredData.instructions || '',
+                  instructions: Array.isArray(structuredData.instructions) 
+                    ? structuredData.instructions.map((step: any) => `${step.order || ''}. ${step.text || ''}`).join('\n')
+                    : (structuredData.instructions || ''),
                   sourceUrl: validatedUrl,
                   transcription,
                   metadata: {

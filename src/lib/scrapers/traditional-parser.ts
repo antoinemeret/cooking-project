@@ -1602,4 +1602,458 @@ function extractNumberFromText(text: string): number | null {
     return parseInt(match[1], 10)
   }
   return null
+}
+
+/**
+ * Extract video metadata from HTML using Open Graph, Twitter Cards, and platform-specific meta tags
+ * Specifically designed for Instagram, TikTok, and YouTube video pages
+ */
+export interface VideoMetadata {
+  title?: string
+  description?: string
+  duration?: number
+  thumbnail?: string
+  uploader?: string
+  uploadDate?: string
+  platform?: string
+  videoId?: string
+  tags?: string[]
+  isRecipe?: boolean
+  recipeIngredients?: string[]
+}
+
+export async function extractVideoMetadata(html: string, url?: string): Promise<{
+  success: boolean
+  metadata?: VideoMetadata
+  error?: string
+}> {
+  const logger = new TraditionalParsingLogger('extractVideoMetadata')
+  
+  try {
+    if (!html || html.trim().length === 0) {
+      return {
+        success: false,
+        error: 'Empty HTML content provided'
+      }
+    }
+
+    const $ = cheerio.load(html)
+    const metadata: VideoMetadata = {}
+
+    // Extract Open Graph metadata
+    const ogData = extractOpenGraphData($)
+    Object.assign(metadata, ogData)
+
+    // Extract Twitter Card metadata
+    const twitterData = extractTwitterCardData($)
+    Object.assign(metadata, twitterData)
+
+    // Extract JSON-LD structured data for videos
+    const jsonLdData = extractVideoJsonLD($)
+    Object.assign(metadata, jsonLdData)
+
+    // Platform-specific extraction
+    if (url) {
+      const platformData = extractPlatformSpecificData($, url)
+      Object.assign(metadata, platformData)
+    }
+
+    // Extract potential recipe content from description
+    if (metadata.description) {
+      const recipeData = extractRecipeFromDescription(metadata.description)
+      Object.assign(metadata, recipeData)
+    }
+
+    // Clean and normalize the extracted data
+    const cleanedMetadata = cleanVideoMetadata(metadata)
+
+    logger.info('Video metadata extraction completed', {
+      hasTitle: !!cleanedMetadata.title,
+      hasDescription: !!cleanedMetadata.description,
+      hasThumbnail: !!cleanedMetadata.thumbnail,
+      platform: cleanedMetadata.platform,
+      isRecipe: cleanedMetadata.isRecipe
+    })
+
+    return {
+      success: true,
+      metadata: cleanedMetadata
+    }
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    logger.error('Video metadata extraction failed', error)
+    
+    return {
+      success: false,
+      error: `Video metadata extraction failed: ${errorMessage}`
+    }
+  }
+}
+
+/**
+ * Extract Open Graph metadata
+ */
+function extractOpenGraphData($: ReturnType<typeof cheerio.load>): Partial<VideoMetadata> {
+  const metadata: Partial<VideoMetadata> = {}
+
+  // Title
+  const ogTitle = $('meta[property="og:title"]').attr('content')
+  if (ogTitle) {
+    const decoded = decodeHtmlEntities(ogTitle)
+    if (decoded) metadata.title = decoded
+  }
+
+  // Description
+  const ogDescription = $('meta[property="og:description"]').attr('content')
+  if (ogDescription) {
+    const decoded = decodeHtmlEntities(ogDescription)
+    if (decoded) metadata.description = decoded
+  }
+
+  // Image/Thumbnail
+  const ogImage = $('meta[property="og:image"]').attr('content')
+  if (ogImage) metadata.thumbnail = ogImage
+
+  // Video duration (if available)
+  const ogVideoDuration = $('meta[property="og:video:duration"]').attr('content')
+  if (ogVideoDuration) {
+    const duration = parseInt(ogVideoDuration, 10)
+    if (!isNaN(duration)) metadata.duration = duration
+  }
+
+  // Video type to determine if it's a video
+  const ogType = $('meta[property="og:type"]').attr('content')
+  if (ogType === 'video' || ogType === 'video.other') {
+    // This is definitely a video
+  }
+
+  return metadata
+}
+
+/**
+ * Extract Twitter Card metadata
+ */
+function extractTwitterCardData($: ReturnType<typeof cheerio.load>): Partial<VideoMetadata> {
+  const metadata: Partial<VideoMetadata> = {}
+
+  // Title
+  const twitterTitle = $('meta[name="twitter:title"]').attr('content')
+  if (twitterTitle && !metadata.title) {
+    const decoded = decodeHtmlEntities(twitterTitle)
+    if (decoded) metadata.title = decoded
+  }
+
+  // Description
+  const twitterDescription = $('meta[name="twitter:description"]').attr('content')
+  if (twitterDescription && !metadata.description) {
+    const decoded = decodeHtmlEntities(twitterDescription)
+    if (decoded) metadata.description = decoded
+  }
+
+  // Image
+  const twitterImage = $('meta[name="twitter:image"]').attr('content')
+  if (twitterImage && !metadata.thumbnail) {
+    metadata.thumbnail = twitterImage
+  }
+
+  // Player URL (for embedded videos)
+  const twitterPlayer = $('meta[name="twitter:player"]').attr('content')
+  if (twitterPlayer) {
+    // Extract video ID from player URL if possible
+    const videoId = extractVideoIdFromUrl(twitterPlayer)
+    if (videoId) metadata.videoId = videoId
+  }
+
+  return metadata
+}
+
+/**
+ * Extract video-specific JSON-LD structured data
+ */
+function extractVideoJsonLD($: ReturnType<typeof cheerio.load>): Partial<VideoMetadata> {
+  const metadata: Partial<VideoMetadata> = {}
+
+  try {
+    $('script[type="application/ld+json"]').each((_, element) => {
+      const jsonText = $(element).html()
+      if (!jsonText) return
+
+      try {
+        const jsonData = JSON.parse(jsonText)
+        
+        // Handle array of structured data
+        const dataArray = Array.isArray(jsonData) ? jsonData : [jsonData]
+        
+        for (const data of dataArray) {
+          if (data['@type'] === 'VideoObject') {
+                         // Video-specific structured data
+             if (data.name && !metadata.title) {
+               const decoded = decodeHtmlEntities(data.name)
+               if (decoded) metadata.title = decoded
+             }
+             
+             if (data.description && !metadata.description) {
+               const decoded = decodeHtmlEntities(data.description)
+               if (decoded) metadata.description = decoded
+             }
+            
+            if (data.thumbnailUrl && !metadata.thumbnail) {
+              metadata.thumbnail = Array.isArray(data.thumbnailUrl) 
+                ? data.thumbnailUrl[0] 
+                : data.thumbnailUrl
+            }
+            
+            if (data.duration && !metadata.duration) {
+              const duration = parseDuration(data.duration)
+              if (duration) metadata.duration = duration
+            }
+            
+            if (data.uploadDate && !metadata.uploadDate) {
+              metadata.uploadDate = data.uploadDate
+            }
+
+            // Extract uploader information
+            if (data.author && !metadata.uploader) {
+              metadata.uploader = typeof data.author === 'string' 
+                ? data.author 
+                : data.author.name || data.author['@name']
+            }
+          }
+        }
+      } catch (parseError) {
+        // Continue with other script tags if one fails
+        console.warn('Failed to parse JSON-LD:', parseError)
+      }
+    })
+  } catch (error) {
+    console.warn('Error extracting JSON-LD video data:', error)
+  }
+
+  return metadata
+}
+
+/**
+ * Extract platform-specific metadata based on the URL
+ */
+function extractPlatformSpecificData($: ReturnType<typeof cheerio.load>, url: string): Partial<VideoMetadata> {
+  const metadata: Partial<VideoMetadata> = {}
+
+  if (url.includes('instagram.com')) {
+    metadata.platform = 'instagram'
+    
+    // Instagram-specific selectors
+    const instagramTitle = $('meta[property="og:title"]').attr('content')
+    if (instagramTitle) {
+      // Remove Instagram branding from title
+      metadata.title = instagramTitle.replace(/\s*•\s*Instagram$/, '').trim()
+    }
+
+    // Extract video ID from URL
+    const videoId = extractVideoIdFromUrl(url)
+    if (videoId) metadata.videoId = videoId
+
+  } else if (url.includes('tiktok.com')) {
+    metadata.platform = 'tiktok'
+    
+    // TikTok-specific selectors
+    const tiktokTitle = $('meta[property="og:title"]').attr('content')
+    if (tiktokTitle) {
+      // Clean TikTok title
+      metadata.title = tiktokTitle.replace(/\s*\|\s*TikTok$/, '').trim()
+    }
+
+    // Extract uploader from TikTok page
+    const tiktokUploader = $('meta[name="twitter:title"]').attr('content')
+    if (tiktokUploader && tiktokUploader.includes('(@')) {
+      const match = tiktokUploader.match(/\(@([^)]+)\)/)
+      if (match) metadata.uploader = match[1]
+    }
+
+    // Extract video ID from URL
+    const videoId = extractVideoIdFromUrl(url)
+    if (videoId) metadata.videoId = videoId
+
+  } else if (url.includes('youtube.com') || url.includes('youtu.be')) {
+    metadata.platform = 'youtube'
+    
+    // YouTube-specific selectors
+    const youtubeTitle = $('meta[property="og:title"]').attr('content')
+    if (youtubeTitle) {
+      metadata.title = youtubeTitle
+    }
+
+    // Extract channel name
+    const channelName = $('meta[property="og:video:tag"]').attr('content')
+    if (channelName && !metadata.uploader) {
+      metadata.uploader = channelName
+    }
+
+    // Extract video ID from URL
+    const videoId = extractVideoIdFromUrl(url)
+    if (videoId) metadata.videoId = videoId
+  }
+
+  return metadata
+}
+
+/**
+ * Extract video ID from various URL formats
+ */
+function extractVideoIdFromUrl(url: string): string | null {
+  // Instagram
+  let match = url.match(/instagram\.com\/(?:p|reel)\/([A-Za-z0-9_-]+)/)
+  if (match) return match[1]
+
+  // TikTok
+  match = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/)
+  if (match) return match[1]
+
+  match = url.match(/(?:vm|vt)\.tiktok\.com\/([A-Za-z0-9]+)/)
+  if (match) return match[1]
+
+  // YouTube
+  match = url.match(/(?:youtube\.com\/shorts\/|youtu\.be\/)([A-Za-z0-9_-]+)/)
+  if (match) return match[1]
+
+  return null
+}
+
+/**
+ * Extract recipe-related information from video description
+ */
+function extractRecipeFromDescription(description: string): Partial<VideoMetadata> {
+  const metadata: Partial<VideoMetadata> = {}
+  
+  // Check if description contains recipe-related keywords
+  const recipeKeywords = [
+    'recipe', 'ingredients', 'cooking', 'baking', 'cook', 'bake',
+    'kitchen', 'chef', 'food', 'dish', 'meal', 'make', 'prepare',
+    'cups?', 'tbsp', 'tsp', 'tablespoons?', 'teaspoons?', 'grams?', 'kg',
+    'minutes?', 'hours?', 'degrees?', 'oven', 'pan', 'mix', 'stir'
+  ]
+  
+  const lowerDescription = description.toLowerCase()
+  const hasRecipeKeywords = recipeKeywords.some(keyword => 
+    new RegExp(`\\b${keyword}\\b`).test(lowerDescription)
+  )
+  
+  metadata.isRecipe = hasRecipeKeywords
+
+  if (hasRecipeKeywords) {
+    // Try to extract ingredients from the description
+    const ingredients = extractIngredientsFromDescription(description)
+    if (ingredients.length > 0) {
+      metadata.recipeIngredients = ingredients
+    }
+
+    // Extract hashtags that might be recipe-related
+    const hashtags = description.match(/#[\w]+/g) || []
+    const recipeTags = hashtags
+      .map(tag => tag.substring(1).toLowerCase())
+      .filter(tag => 
+        recipeKeywords.some(keyword => tag.includes(keyword)) ||
+        ['food', 'cooking', 'recipe', 'kitchen', 'chef', 'homemade'].includes(tag)
+      )
+    
+    if (recipeTags.length > 0) {
+      metadata.tags = recipeTags
+    }
+  }
+
+  return metadata
+}
+
+/**
+ * Clean and normalize video metadata
+ */
+function cleanVideoMetadata(metadata: VideoMetadata): VideoMetadata {
+  const cleaned: VideoMetadata = {}
+
+  // Clean title
+  if (metadata.title) {
+    cleaned.title = metadata.title
+      .replace(/\s+/g, ' ')
+      .replace(/[\r\n]+/g, ' ')
+      .trim()
+      .substring(0, 200) // Limit title length
+  }
+
+  // Clean description
+  if (metadata.description) {
+    cleaned.description = metadata.description
+      .replace(/\s+/g, ' ')
+      .replace(/[\r\n]+/g, ' ')
+      .trim()
+      .substring(0, 1000) // Limit description length
+  }
+
+  // Preserve other fields
+  if (metadata.duration) cleaned.duration = metadata.duration
+  if (metadata.thumbnail) cleaned.thumbnail = metadata.thumbnail
+  if (metadata.uploader) cleaned.uploader = metadata.uploader?.trim()
+  if (metadata.uploadDate) cleaned.uploadDate = metadata.uploadDate
+  if (metadata.platform) cleaned.platform = metadata.platform
+  if (metadata.videoId) cleaned.videoId = metadata.videoId
+  if (metadata.tags) cleaned.tags = metadata.tags
+  if (metadata.isRecipe !== undefined) cleaned.isRecipe = metadata.isRecipe
+  if (metadata.recipeIngredients) cleaned.recipeIngredients = metadata.recipeIngredients
+
+  return cleaned
+}
+
+/**
+ * Extract ingredients from video description text
+ * Enhanced version of the existing function for video descriptions
+ */
+function extractIngredientsFromDescription(description: string): string[] {
+  if (!description) return []
+
+  const ingredients: string[] = []
+  const lines = description.split(/[\r\n]+/)
+  
+  // Look for common ingredient patterns in video descriptions
+  const ingredientPatterns = [
+    /^[-•*]\s*(.+)$/gm, // Bullet points
+    /^\d+\.?\s*(.+)$/gm, // Numbered lists
+    /(?:ingredients?|recipe|what you need):?\s*(.+)/gi, // "Ingredients:" sections
+    /(\d+\s*(?:cups?|tbsp|tsp|tablespoons?|teaspoons?|grams?|kg|lbs?|oz)\s+[^,\n]+)/gi, // Measurements
+  ]
+
+  // First, look for structured ingredient lists
+  for (const line of lines) {
+    const trimmedLine = line.trim()
+    if (!trimmedLine) continue
+
+    // Check if line looks like an ingredient (has measurements or common patterns)
+    if (trimmedLine.match(/^\d+[\s\w]*[-•*]/) || 
+        trimmedLine.match(/\d+\s*(?:cups?|tbsp|tsp|tablespoons?|teaspoons?|grams?|kg|lbs?|oz)/i)) {
+      const cleaned = trimmedLine.replace(/^[-•*\d.\s]+/, '').trim()
+      if (cleaned.length > 2 && cleaned.length < 100) {
+        ingredients.push(cleaned)
+      }
+    }
+  }
+
+  // If no structured list found, try pattern matching
+  if (ingredients.length === 0) {
+    for (const pattern of ingredientPatterns) {
+      const matches = description.matchAll(pattern)
+      for (const match of matches) {
+        const ingredient = match[1]?.trim()
+        if (ingredient && ingredient.length > 2 && ingredient.length < 100) {
+          // Avoid duplicate ingredients
+          if (!ingredients.some(existing => 
+            existing.toLowerCase().includes(ingredient.toLowerCase()) ||
+            ingredient.toLowerCase().includes(existing.toLowerCase())
+          )) {
+            ingredients.push(ingredient)
+          }
+        }
+      }
+    }
+  }
+
+  // Remove duplicates and return first 15 ingredients max
+  return [...new Set(ingredients)].slice(0, 15)
 } 

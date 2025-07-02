@@ -6,16 +6,21 @@ Based on `prd-import-video-recipe.md`
 
 - `src/app/api/recipes/import-video/route.ts` - New API route handler for video recipe imports (created)
 - `src/app/api/recipes/import-video/route.test.ts` - Unit tests for the video import API route
-- `src/lib/video-processor.ts` - Core video processing utilities (download, extract audio, transcribe)
+- `src/lib/video-processor.ts` - Core video processing utilities for URL detection and platform handling (created)
+- `src/lib/audio-extractor.ts` - Audio extraction functionality using yt-dlp with platform optimizations (created)
+- `src/lib/speech-transcriber.ts` - Speech-to-text transcription using Ollama's Whisper model (created)
+- `src/lib/ai-video-client.ts` - AI recipe structuring using Deepseek via Ollama for video transcriptions (created)
+- `src/lib/video-processing-pipeline.ts` - Central orchestrator for complete video-to-recipe processing workflow (created)
+- `src/lib/scrapers/traditional-parser.ts` - Enhanced with video metadata extraction (enhanced)
 - `src/lib/video-processor.test.ts` - Unit tests for video processing functions
-- `src/lib/scrapers/video-parser.ts` - Video URL detection and platform-specific HTML parsing
 - `src/lib/scrapers/video-parser.test.ts` - Unit tests for video parser
 - `src/lib/ai-video-client.ts` - AI client specifically for processing video transcriptions
 - `src/lib/ai-video-client.test.ts` - Unit tests for AI video processing
 - `src/lib/temp-file-manager.ts` - Temporary file management utilities for video/audio cleanup (created)
 - `src/lib/video-url-validator.ts` - Comprehensive video URL validation with security checks (created)
 - `src/types/video-import.ts` - Complete TypeScript types for video import API responses and processing (created)
-- `src/components/recipes/VideoImportDialog.tsx` - Extended import dialog component for video processing
+- `src/lib/video-url-detector.ts` - Video URL detection utility for identifying video platforms (created)
+- `src/app/recipes/data-table.tsx` - Enhanced existing import dialog to detect and handle video URLs (enhanced)
 - `src/components/recipes/VideoImportDialog.test.tsx` - Unit tests for video import dialog
 - `src/components/recipes/VideoProgressTracker.tsx` - Progress tracking component for video processing steps
 - `src/components/recipes/VideoProgressTracker.test.tsx` - Unit tests for progress tracker
@@ -43,21 +48,21 @@ Based on `prd-import-video-recipe.md`
   - [x] 2.3 Add response types for video processing stages and results
   - [x] 2.4 Integrate with existing Prisma recipe schema for data storage
   - [x] 2.5 Add proper error handling and HTTP status codes
-- [ ] 3.0 Implement Video Detection and Processing Pipeline
-  - [ ] 3.1 Create video URL detection logic for Instagram, TikTok, YouTube Shorts
-  - [ ] 3.2 Implement HTML metadata extraction using existing traditional parser
-  - [ ] 3.3 Build audio extraction functionality using yt-dlp
-  - [ ] 3.4 Create speech-to-text transcription using Whisper via Ollama
-  - [ ] 3.5 Implement AI recipe structuring using Deepseek via Ollama
-  - [ ] 3.6 Add progress tracking and status updates throughout the pipeline
-  - [ ] 3.7 Implement temporary file cleanup after processing completion
-- [ ] 4.0 Extend Frontend Import Interface for Video URLs
-  - [ ] 4.1 Modify existing import dialog to detect and handle video URLs
-  - [ ] 4.2 Create progress tracking UI component for video processing steps
-  - [ ] 4.3 Add loading states and progress indicators for each processing phase
-  - [ ] 4.4 Integrate video processing results with existing preview/edit dialog
-  - [ ] 4.5 Handle partial results display when AI processing is incomplete
-  - [ ] 4.6 Add video source URL display in recipe preview
+- [x] 3.0 Implement Video Detection and Processing Pipeline
+  - [x] 3.1 Create video URL detection logic for Instagram, TikTok, YouTube Shorts
+  - [x] 3.2 Implement HTML metadata extraction using existing traditional parser
+  - [x] 3.3 Build audio extraction functionality using yt-dlp
+  - [x] 3.4 Create speech-to-text transcription using Whisper via Ollama
+  - [x] 3.5 Implement AI recipe structuring using Deepseek via Ollama
+  - [x] 3.6 Add progress tracking and status updates throughout the pipeline
+  - [x] 3.7 Implement temporary file cleanup after processing completion
+- [x] 4.0 Extend Frontend Import Interface for Video URLs
+  - [x] 4.1 Modify existing import dialog to detect and handle video URLs
+  - [x] 4.2 Create progress tracking UI component for video processing steps
+  - [x] 4.3 Add loading states and progress indicators for each processing phase
+  - [x] 4.4 Integrate video processing results with existing preview/edit dialog
+  - [x] 4.5 Handle partial results display when AI processing is incomplete
+  - [x] 4.6 Add video source URL display in recipe preview
 - [ ] 5.0 Add Error Handling and Resource Management
   - [ ] 5.1 Implement comprehensive error handling for video download failures
   - [ ] 5.2 Add error recovery for transcription and AI processing failures
