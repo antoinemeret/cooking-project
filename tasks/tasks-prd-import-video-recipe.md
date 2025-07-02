@@ -4,7 +4,7 @@ Based on `prd-import-video-recipe.md`
 
 ## Relevant Files
 
-- `src/app/api/recipes/import-video/route.ts` - New API route handler for video recipe imports
+- `src/app/api/recipes/import-video/route.ts` - New API route handler for video recipe imports (created)
 - `src/app/api/recipes/import-video/route.test.ts` - Unit tests for the video import API route
 - `src/lib/video-processor.ts` - Core video processing utilities (download, extract audio, transcribe)
 - `src/lib/video-processor.test.ts` - Unit tests for video processing functions
@@ -13,6 +13,8 @@ Based on `prd-import-video-recipe.md`
 - `src/lib/ai-video-client.ts` - AI client specifically for processing video transcriptions
 - `src/lib/ai-video-client.test.ts` - Unit tests for AI video processing
 - `src/lib/temp-file-manager.ts` - Temporary file management utilities for video/audio cleanup (created)
+- `src/lib/video-url-validator.ts` - Comprehensive video URL validation with security checks (created)
+- `src/types/video-import.ts` - Complete TypeScript types for video import API responses and processing (created)
 - `src/components/recipes/VideoImportDialog.tsx` - Extended import dialog component for video processing
 - `src/components/recipes/VideoImportDialog.test.tsx` - Unit tests for video import dialog
 - `src/components/recipes/VideoProgressTracker.tsx` - Progress tracking component for video processing steps
@@ -35,12 +37,12 @@ Based on `prd-import-video-recipe.md`
   - [x] 1.3 Configure Ollama with Deepseek model for recipe structuring
   - [x] 1.4 Add video processing configuration to next.config.mjs
   - [x] 1.5 Create temporary file management utilities for video/audio cleanup
-- [ ] 2.0 Create Video Import API Route
-  - [ ] 2.1 Create `/api/recipes/import-video/route.ts` with POST endpoint
-  - [ ] 2.2 Implement request validation for video URLs
-  - [ ] 2.3 Add response types for video processing stages and results
-  - [ ] 2.4 Integrate with existing Prisma recipe schema for data storage
-  - [ ] 2.5 Add proper error handling and HTTP status codes
+- [x] 2.0 Create Video Import API Route
+  - [x] 2.1 Create `/api/recipes/import-video/route.ts` with POST endpoint
+  - [x] 2.2 Implement request validation for video URLs
+  - [x] 2.3 Add response types for video processing stages and results
+  - [x] 2.4 Integrate with existing Prisma recipe schema for data storage
+  - [x] 2.5 Add proper error handling and HTTP status codes
 - [ ] 3.0 Implement Video Detection and Processing Pipeline
   - [ ] 3.1 Create video URL detection logic for Instagram, TikTok, YouTube Shorts
   - [ ] 3.2 Implement HTML metadata extraction using existing traditional parser
