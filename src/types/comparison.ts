@@ -42,10 +42,18 @@ export interface ComparisonResult {
 
 // Manual evaluation for each technology
 export interface RecipeEvaluation {
+  // Manual scoring fields (new)
+  titleScore?: number | null  // -1, 0, or 1
+  ingredientsScore?: number | null  // -1, 0, or 1
+  instructionsScore?: number | null  // -1, 0, or 1
+  totalScore?: number | null  // Sum of the three scores above
+  
+  // Legacy boolean fields (backward compatibility)
   titleAccurate: boolean | null
   ingredientsAccurate: boolean | null
   instructionsAccurate: boolean | null
   overallSuccess: boolean | null
+  
   evaluatedAt?: Date
   evaluatorNotes?: string
 }

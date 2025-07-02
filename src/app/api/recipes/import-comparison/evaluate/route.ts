@@ -28,8 +28,14 @@ function validateEvaluationRequest(body: any): EvaluationSubmissionRequest | nul
     return null
   }
 
-  // Validate evaluation fields (all should be boolean or null)
+  // Validate evaluation fields (booleans for legacy, integers for manual scoring)
   const validEvaluation = {
+    // Manual scoring fields (integers: -1, 0, 1)
+    titleScore: typeof evaluation.titleScore === 'number' && [-1, 0, 1].includes(evaluation.titleScore) ? evaluation.titleScore : undefined,
+    ingredientsScore: typeof evaluation.ingredientsScore === 'number' && [-1, 0, 1].includes(evaluation.ingredientsScore) ? evaluation.ingredientsScore : undefined,
+    instructionsScore: typeof evaluation.instructionsScore === 'number' && [-1, 0, 1].includes(evaluation.instructionsScore) ? evaluation.instructionsScore : undefined,
+    
+    // Legacy boolean fields
     titleAccurate: typeof evaluation.titleAccurate === 'boolean' ? evaluation.titleAccurate : null,
     ingredientsAccurate: typeof evaluation.ingredientsAccurate === 'boolean' ? evaluation.ingredientsAccurate : null,
     instructionsAccurate: typeof evaluation.instructionsAccurate === 'boolean' ? evaluation.instructionsAccurate : null,
@@ -102,6 +108,79 @@ export async function POST(req: NextRequest): Promise<NextResponse<EvaluationSub
       }, { status: 404 })
     }
 
+    // Prepare update data for manual scoring
+    const updateData: any = {
+      evaluatedAt: new Date()
+    }
+    const createData: any = {
+      comparisonId,
+      technology,
+      evaluatedAt: new Date()
+    }
+
+    // Handle manual scoring fields
+    if (evaluation.titleScore !== undefined) {
+      updateData.titleScore = evaluation.titleScore
+      createData.titleScore = evaluation.titleScore
+      // Convert to boolean for backward compatibility
+      updateData.titleAccurate = evaluation.titleScore === 1 ? true : evaluation.titleScore === -1 ? false : null
+      createData.titleAccurate = evaluation.titleScore === 1 ? true : evaluation.titleScore === -1 ? false : null
+    }
+    if (evaluation.ingredientsScore !== undefined) {
+      updateData.ingredientsScore = evaluation.ingredientsScore
+      createData.ingredientsScore = evaluation.ingredientsScore
+      updateData.ingredientsAccurate = evaluation.ingredientsScore === 1 ? true : evaluation.ingredientsScore === -1 ? false : null
+      createData.ingredientsAccurate = evaluation.ingredientsScore === 1 ? true : evaluation.ingredientsScore === -1 ? false : null
+    }
+    if (evaluation.instructionsScore !== undefined) {
+      updateData.instructionsScore = evaluation.instructionsScore
+      createData.instructionsScore = evaluation.instructionsScore
+      updateData.instructionsAccurate = evaluation.instructionsScore === 1 ? true : evaluation.instructionsScore === -1 ? false : null
+      createData.instructionsAccurate = evaluation.instructionsScore === 1 ? true : evaluation.instructionsScore === -1 ? false : null
+    }
+
+    // Handle legacy boolean fields
+    if (evaluation.titleAccurate !== undefined) {
+      updateData.titleAccurate = evaluation.titleAccurate
+      createData.titleAccurate = evaluation.titleAccurate
+    }
+    if (evaluation.ingredientsAccurate !== undefined) {
+      updateData.ingredientsAccurate = evaluation.ingredientsAccurate
+      createData.ingredientsAccurate = evaluation.ingredientsAccurate
+    }
+    if (evaluation.instructionsAccurate !== undefined) {
+      updateData.instructionsAccurate = evaluation.instructionsAccurate
+      createData.instructionsAccurate = evaluation.instructionsAccurate
+    }
+    if (evaluation.overallSuccess !== undefined) {
+      updateData.overallSuccess = evaluation.overallSuccess
+      createData.overallSuccess = evaluation.overallSuccess
+    }
+    if (evaluation.evaluatorNotes !== undefined) {
+      updateData.evaluatorNotes = evaluation.evaluatorNotes
+      createData.evaluatorNotes = evaluation.evaluatorNotes
+    }
+
+    // Get current evaluation to calculate total score
+    const currentEvaluation = await prisma.comparisonEvaluation.findUnique({
+      where: {
+        comparisonId_technology: {
+          comparisonId,
+          technology
+        }
+      }
+    })
+
+    // Calculate total score if we have all three scores
+    const titleScore = updateData.titleScore !== undefined ? updateData.titleScore : currentEvaluation?.titleScore
+    const ingredientsScore = updateData.ingredientsScore !== undefined ? updateData.ingredientsScore : currentEvaluation?.ingredientsScore
+    const instructionsScore = updateData.instructionsScore !== undefined ? updateData.instructionsScore : currentEvaluation?.instructionsScore
+
+    if (titleScore !== null && ingredientsScore !== null && instructionsScore !== null) {
+      updateData.totalScore = titleScore + ingredientsScore + instructionsScore
+      createData.totalScore = titleScore + ingredientsScore + instructionsScore
+    }
+
     // Upsert the evaluation (create or update)
     const savedEvaluation = await prisma.comparisonEvaluation.upsert({
       where: {
@@ -110,24 +189,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<EvaluationSub
           technology
         }
       },
-      update: {
-        titleAccurate: evaluation.titleAccurate,
-        ingredientsAccurate: evaluation.ingredientsAccurate,
-        instructionsAccurate: evaluation.instructionsAccurate,
-        overallSuccess: evaluation.overallSuccess,
-        evaluatorNotes: evaluation.evaluatorNotes,
-        evaluatedAt: new Date()
-      },
-      create: {
-        comparisonId,
-        technology,
-        titleAccurate: evaluation.titleAccurate,
-        ingredientsAccurate: evaluation.ingredientsAccurate,
-        instructionsAccurate: evaluation.instructionsAccurate,
-        overallSuccess: evaluation.overallSuccess,
-        evaluatorNotes: evaluation.evaluatorNotes,
-        evaluatedAt: new Date()
-      }
+      update: updateData,
+      create: createData
     })
 
     // Update comparison status if both technologies are now evaluated
@@ -135,10 +198,18 @@ export async function POST(req: NextRequest): Promise<NextResponse<EvaluationSub
 
     // Format response
     const updatedEvaluation: RecipeEvaluation = {
+      // Manual scoring fields
+      titleScore: savedEvaluation.titleScore,
+      ingredientsScore: savedEvaluation.ingredientsScore,
+      instructionsScore: savedEvaluation.instructionsScore,
+      totalScore: savedEvaluation.totalScore,
+      
+      // Legacy boolean fields
       titleAccurate: savedEvaluation.titleAccurate,
       ingredientsAccurate: savedEvaluation.ingredientsAccurate,
       instructionsAccurate: savedEvaluation.instructionsAccurate,
       overallSuccess: savedEvaluation.overallSuccess,
+      
       evaluatedAt: savedEvaluation.evaluatedAt,
       evaluatorNotes: savedEvaluation.evaluatorNotes || undefined
     }
@@ -185,10 +256,18 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // Format evaluations by technology
     const evaluationsByTechnology = evaluations.reduce((acc: Record<string, RecipeEvaluation>, evaluation: any) => {
       acc[evaluation.technology] = {
+        // Manual scoring fields
+        titleScore: evaluation.titleScore,
+        ingredientsScore: evaluation.ingredientsScore,
+        instructionsScore: evaluation.instructionsScore,
+        totalScore: evaluation.totalScore,
+        
+        // Legacy boolean fields
         titleAccurate: evaluation.titleAccurate,
         ingredientsAccurate: evaluation.ingredientsAccurate,
         instructionsAccurate: evaluation.instructionsAccurate,
         overallSuccess: evaluation.overallSuccess,
+        
         evaluatedAt: evaluation.evaluatedAt,
         evaluatorNotes: evaluation.evaluatorNotes || undefined
       }

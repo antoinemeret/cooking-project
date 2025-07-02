@@ -15,15 +15,39 @@ import {
   AlertTriangle,
   LoaderCircle,
   Timer,
-  Activity
+  Activity,
+  ThumbsUp,
+  ThumbsDown,
+  Minus,
+  Star
 } from 'lucide-react'
 import type { ImportComparisonResponse } from '@/types/comparison'
+
+interface ManualScores {
+  ollama: {
+    titleScore: number | null
+    ingredientsScore: number | null
+    instructionsScore: number | null
+    totalScore: number | null
+  }
+  traditional: {
+    titleScore: number | null
+    ingredientsScore: number | null
+    instructionsScore: number | null
+    totalScore: number | null
+  }
+}
 
 export function ImportComparisonInterface() {
   const [url, setUrl] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<ImportComparisonResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [manualScores, setManualScores] = useState<ManualScores>({
+    ollama: { titleScore: null, ingredientsScore: null, instructionsScore: null, totalScore: null },
+    traditional: { titleScore: null, ingredientsScore: null, instructionsScore: null, totalScore: null }
+  })
+  const [scoringMessage, setScoringMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,6 +84,60 @@ export function ImportComparisonInterface() {
     setUrl('')
     setResult(null)
     setError(null)
+    setManualScores({
+      ollama: { titleScore: null, ingredientsScore: null, instructionsScore: null, totalScore: null },
+      traditional: { titleScore: null, ingredientsScore: null, instructionsScore: null, totalScore: null }
+    })
+    setScoringMessage(null)
+  }
+
+  const handleManualScore = async (technology: 'ollama' | 'traditional', field: 'title' | 'ingredients' | 'instructions', score: number) => {
+    if (!result) return
+
+    try {
+      const response = await fetch('/api/recipes/import-comparison/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          comparisonId: result.comparisonId,
+          technology,
+          evaluation: {
+            [`${field}Score`]: score,
+            evaluatorNotes: `Manual scoring: ${field} scored ${score === 1 ? 'Good (+1)' : score === 0 ? 'Neutral (0)' : 'Bad (-1)'}`
+          }
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to submit manual score')
+      }
+
+      // Calculate total score for this technology
+      const currentScores = { ...manualScores[technology] }
+      currentScores[`${field}Score` as keyof typeof currentScores] = score
+      
+      const totalScore = [currentScores.titleScore, currentScores.ingredientsScore, currentScores.instructionsScore]
+        .filter(s => s !== null)
+        .reduce((sum, s) => sum + (s || 0), 0)
+
+      // Update local state
+      setManualScores(prev => ({
+        ...prev,
+        [technology]: {
+          ...currentScores,
+          totalScore: currentScores.titleScore !== null && currentScores.ingredientsScore !== null && currentScores.instructionsScore !== null 
+            ? totalScore 
+            : null
+        }
+      }))
+
+      setScoringMessage({ type: 'success', text: `Score ${score === 1 ? '(+1)' : score === 0 ? '(0)' : '(-1)'} submitted for ${technology} ${field}` })
+      setTimeout(() => setScoringMessage(null), 3000)
+    } catch (error) {
+      console.error('Error submitting manual score:', error)
+      setScoringMessage({ type: 'error', text: 'Failed to submit manual score' })
+      setTimeout(() => setScoringMessage(null), 3000)
+    }
   }
 
   const formatTime = (milliseconds: number) => {
@@ -78,6 +156,43 @@ export function ImportComparisonInterface() {
     if (success) return <Badge className="bg-green-100 text-green-800 border-green-300">Success</Badge>
     return <Badge variant="secondary">Incomplete</Badge>
   }
+
+  const ScoreButtons = ({ 
+    technology, 
+    field, 
+    currentScore 
+  }: { 
+    technology: 'ollama' | 'traditional'
+    field: 'title' | 'ingredients' | 'instructions'
+    currentScore: number | null 
+  }) => (
+    <div className="flex gap-1">
+      <Button
+        size="sm"
+        variant={currentScore === 1 ? "default" : "outline"}
+        onClick={() => handleManualScore(technology, field, 1)}
+        className={`h-7 px-2 ${currentScore === 1 ? 'bg-green-600 hover:bg-green-700' : 'hover:bg-green-50 hover:border-green-300'}`}
+      >
+        <ThumbsUp className="h-3 w-3" />
+      </Button>
+      <Button
+        size="sm"
+        variant={currentScore === 0 ? "default" : "outline"}
+        onClick={() => handleManualScore(technology, field, 0)}
+        className={`h-7 px-2 ${currentScore === 0 ? 'bg-gray-600 hover:bg-gray-700' : 'hover:bg-gray-50 hover:border-gray-300'}`}
+      >
+        <Minus className="h-3 w-3" />
+      </Button>
+      <Button
+        size="sm"
+        variant={currentScore === -1 ? "default" : "outline"}
+        onClick={() => handleManualScore(technology, field, -1)}
+        className={`h-7 px-2 ${currentScore === -1 ? 'bg-red-600 hover:bg-red-700' : 'hover:bg-red-50 hover:border-red-300'}`}
+      >
+        <ThumbsDown className="h-3 w-3" />
+      </Button>
+    </div>
+  )
 
   return (
     <div className="space-y-6">
@@ -387,6 +502,164 @@ export function ImportComparisonInterface() {
                 </div>
               </div>
             </div>
+          </Card>
+
+          {/* Manual Quality Scoring */}
+          <Card className="p-4 sm:p-6">
+            <h4 className="font-semibold mb-4 flex items-center gap-2">
+              <Star className="h-4 w-4" />
+              Manual Quality Scoring
+            </h4>
+            
+            {/* Scoring Message */}
+            {scoringMessage && (
+              <div className={`mb-4 p-3 rounded-lg border ${
+                scoringMessage.type === 'success' 
+                  ? 'bg-green-50 border-green-200 text-green-800' 
+                  : 'bg-red-50 border-red-200 text-red-800'
+              }`}>
+                <p className="text-sm font-medium">{scoringMessage.text}</p>
+              </div>
+            )}
+
+            <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800">
+                <strong>Scoring Legend:</strong> 
+                <span className="ml-2">👍 Good (+1)</span>
+                <span className="ml-2">➖ Neutral (0)</span>
+                <span className="ml-2">👎 Bad (-1)</span>
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                Total Score = Sum of all three fields. Range: -3 to +3
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Ollama Scoring */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b">
+                  <div className="w-3 h-3 bg-gradient-to-br from-orange-400 to-red-500 rounded-full"></div>
+                  <h5 className="font-semibold">Ollama LLM</h5>
+                  {manualScores.ollama.totalScore !== null && (
+                    <Badge variant="outline" className="ml-auto font-mono">
+                      Total: {manualScores.ollama.totalScore > 0 ? '+' : ''}{manualScores.ollama.totalScore}
+                    </Badge>
+                  )}
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Title Quality</span>
+                    <ScoreButtons 
+                      technology="ollama" 
+                      field="title" 
+                      currentScore={manualScores.ollama.titleScore} 
+                    />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Ingredients Quality</span>
+                    <ScoreButtons 
+                      technology="ollama" 
+                      field="ingredients" 
+                      currentScore={manualScores.ollama.ingredientsScore} 
+                    />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Instructions Quality</span>
+                    <ScoreButtons 
+                      technology="ollama" 
+                      field="instructions" 
+                      currentScore={manualScores.ollama.instructionsScore} 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Traditional Scoring */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b">
+                  <div className="w-3 h-3 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full"></div>
+                  <h5 className="font-semibold">Traditional Parser</h5>
+                  {manualScores.traditional.totalScore !== null && (
+                    <Badge variant="outline" className="ml-auto font-mono">
+                      Total: {manualScores.traditional.totalScore > 0 ? '+' : ''}{manualScores.traditional.totalScore}
+                    </Badge>
+                  )}
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Title Quality</span>
+                    <ScoreButtons 
+                      technology="traditional" 
+                      field="title" 
+                      currentScore={manualScores.traditional.titleScore} 
+                    />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Ingredients Quality</span>
+                    <ScoreButtons 
+                      technology="traditional" 
+                      field="ingredients" 
+                      currentScore={manualScores.traditional.ingredientsScore} 
+                    />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Instructions Quality</span>
+                    <ScoreButtons 
+                      technology="traditional" 
+                      field="instructions" 
+                      currentScore={manualScores.traditional.instructionsScore} 
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Score Summary */}
+            {(manualScores.ollama.totalScore !== null || manualScores.traditional.totalScore !== null) && (
+              <div className="mt-6 pt-4 border-t">
+                <div className="flex items-center justify-center gap-8">
+                  {manualScores.ollama.totalScore !== null && (
+                    <div className="text-center">
+                      <div className="text-sm text-muted-foreground">Ollama Total</div>
+                      <div className={`text-2xl font-bold ${
+                        manualScores.ollama.totalScore > 0 ? 'text-green-600' : 
+                        manualScores.ollama.totalScore < 0 ? 'text-red-600' : 'text-gray-600'
+                      }`}>
+                        {manualScores.ollama.totalScore > 0 ? '+' : ''}{manualScores.ollama.totalScore}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {manualScores.ollama.totalScore !== null && manualScores.traditional.totalScore !== null && (
+                    <div className="text-center">
+                      <div className="text-sm text-muted-foreground">Winner</div>
+                      <div className="text-2xl">
+                        {manualScores.ollama.totalScore > manualScores.traditional.totalScore ? '🔥' :
+                         manualScores.traditional.totalScore > manualScores.ollama.totalScore ? '⚡' : '🤝'}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {manualScores.traditional.totalScore !== null && (
+                    <div className="text-center">
+                      <div className="text-sm text-muted-foreground">Traditional Total</div>
+                      <div className={`text-2xl font-bold ${
+                        manualScores.traditional.totalScore > 0 ? 'text-green-600' : 
+                        manualScores.traditional.totalScore < 0 ? 'text-red-600' : 'text-gray-600'
+                      }`}>
+                        {manualScores.traditional.totalScore > 0 ? '+' : ''}{manualScores.traditional.totalScore}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </Card>
         </div>
       )}

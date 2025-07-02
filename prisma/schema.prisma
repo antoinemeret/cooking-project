@@ -90,10 +90,19 @@ model ComparisonEvaluation {
   id                    Int      @id @default(autoincrement())
   comparisonId          String
   technology            String   // "ollama" or "traditional"
+  
+  // Manual scoring fields (true = +1, false = -1, null = 0)
+  titleScore            Int?     // -1, 0, or 1
+  ingredientsScore      Int?     // -1, 0, or 1
+  instructionsScore     Int?     // -1, 0, or 1
+  totalScore            Int?     // Sum of the three scores above
+  
+  // Legacy boolean fields (kept for backward compatibility)
   titleAccurate         Boolean?
   ingredientsAccurate   Boolean?
   instructionsAccurate  Boolean?
   overallSuccess        Boolean?
+  
   evaluatorNotes        String?
   evaluatedAt           DateTime @default(now())
   
@@ -103,6 +112,7 @@ model ComparisonEvaluation {
   @@unique([comparisonId, technology])
   @@index([technology])
   @@index([overallSuccess])
+  @@index([totalScore])
 }
 
 model PerformanceMetrics {
