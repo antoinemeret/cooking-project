@@ -384,7 +384,6 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
             <div className="flex-1 max-w-md">
               <VideoProgressTracker 
                 progress={videoProgress}
-                compact={true}
               />
             </div>
           )}
@@ -696,17 +695,12 @@ function ImportRecipeDialog({
                 {loading ? 'Processing...' : 'Import'}
               </Button>
             </div>
-            
-            {/* Video Progress Tracker */}
+            {/* Video Progress Tracker - always compact, inline */}
             {isVideoProcessing && videoProgress && (
-              <div className="mt-4">
-                <VideoProgressTracker 
-                  progress={videoProgress}
-                  compact={false}
-                />
+              <div className="mt-3">
+                <VideoProgressTracker progress={videoProgress} />
               </div>
             )}
-            
             {/* Video URL Detection Info */}
             {url && !isVideoProcessing && (() => {
               const detection = detectVideoUrl(url)
@@ -770,77 +764,7 @@ function ValidateRecipeForm({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Video Source Information */}
-      {isVideoImport && (
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-            <h3 className="font-semibold text-blue-900">Video Recipe Source</h3>
-          </div>
-          
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-gray-700">Platform:</span>
-              <span className="bg-white px-2 py-1 rounded text-blue-700 font-medium capitalize">
-                {currentRecipe.videoMetadata?.platform || 'Unknown'}
-              </span>
-            </div>
-            
-            {currentRecipe.sourceUrl && (
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-gray-700">Source:</span>
-                <a 
-                  href={currentRecipe.sourceUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline truncate max-w-xs"
-                >
-                  {currentRecipe.sourceUrl}
-                </a>
-              </div>
-            )}
-            
-            {currentRecipe.videoMetadata?.duration && (
-              <div className="flex items-center gap-2">
-                <span className="font-medium text-gray-700">Duration:</span>
-                <span className="text-gray-600">{Math.round(currentRecipe.videoMetadata.duration)}s</span>
-              </div>
-            )}
-            
-            <div className="flex items-center gap-2">
-              <span className="font-medium text-gray-700">Extracted:</span>
-              <span className="text-gray-600">
-                {currentRecipe.videoMetadata?.extractedAt ? 
-                  new Date(currentRecipe.videoMetadata.extractedAt).toLocaleString() : 
-                  'Just now'
-                }
-              </span>
-            </div>
-            
-            {currentRecipe.transcription && (
-              <div className="pt-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowTranscription(!showTranscription)}
-                  className="text-xs"
-                >
-                  {showTranscription ? 'Hide' : 'View'} Transcription
-                </Button>
-                
-                {showTranscription && (
-                  <div className="mt-2 p-3 bg-gray-50 rounded border max-h-32 overflow-y-auto">
-                    <p className="text-xs text-gray-700 leading-relaxed">
-                      {currentRecipe.transcription}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
+      {/* Video Source Information (removed for video imports) */}
       {/* Recipe Fields */}
       <div>
         <label className="block text-sm font-medium mb-1">Title</label>
@@ -850,7 +774,6 @@ function ValidateRecipeForm({
           placeholder="Enter recipe title"
         />
       </div>
-      
       <div>
         <label className="block text-sm font-medium mb-1">Ingredients</label>
         <textarea
@@ -862,7 +785,6 @@ function ValidateRecipeForm({
         />
         <p className="text-xs text-gray-500 mt-1">Enter each ingredient on a new line</p>
       </div>
-      
       <div>
         <label className="block text-sm font-medium mb-1">Instructions</label>
         <textarea
@@ -873,22 +795,11 @@ function ValidateRecipeForm({
           placeholder="Enter cooking instructions"
         />
       </div>
-      
       {/* Action Buttons */}
       <div className="flex gap-2 pt-2">
         <Button onClick={onValidate} disabled={loading} className="flex-1">
           {loading ? 'Saving...' : 'Save Recipe'}
         </Button>
-        
-        {isVideoImport && (
-          <Button 
-            variant="outline" 
-            onClick={() => window.open(currentRecipe.sourceUrl, '_blank')}
-            className="px-3"
-          >
-            View Source
-          </Button>
-        )}
       </div>
     </div>
   )
