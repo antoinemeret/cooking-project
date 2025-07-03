@@ -34,12 +34,14 @@ import { toast } from "sonner"
 import { detectVideoUrl, getPlatformDisplayName } from "@/lib/video-url-detector"
 import { VideoProgressTracker, VideoProcessingProgress, VideoProcessingStage } from "@/components/recipes/VideoProgressTracker"
 import { ExtractedRecipeData, VideoPlatform } from "@/types/video-import"
+import { TagInput, TagSuggestion } from "@/components/ui/tag-input"
 
 type ImportedRecipe = {
   id?: number
   title: string
   rawIngredients: string[]
   instructions: string
+  tags?: string[]
   // Video-specific metadata
   sourceUrl?: string
   transcription?: string
@@ -71,6 +73,9 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
   // Video processing progress state
   const [videoProgress, setVideoProgress] = useState<VideoProcessingProgress | null>(null)
   const [isVideoProcessing, setIsVideoProcessing] = useState(false)
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
+  const [tagUpdateError, setTagUpdateError] = useState<string | null>(null)
+  const [isUpdatingTags, setIsUpdatingTags] = useState(false)
 
   const openReviewDialog = (recipe: ImportedRecipe) => {
     setImportedRecipe(recipe)
@@ -80,6 +85,37 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
 
   const handlePhotoImportClick = () => {
     photoInputRef.current?.click()
+  }
+
+  const handleRecipeTagsChange = async (recipeId: number, newTags: string[]) => {
+    setIsUpdatingTags(true)
+    setTagUpdateError(null)
+    
+    try {
+      const response = await fetch(`/api/recipes/${recipeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags: JSON.stringify(newTags) }),
+      })
+      
+      if (response.ok) {
+        // Update the local recipe state
+        setSelectedRecipe(prev => prev ? { ...prev, tags: JSON.stringify(newTags) } : null)
+        // Refresh the recipe list
+        onRefresh()
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || 'Failed to update recipe tags'
+        setTagUpdateError(errorMessage)
+        console.error('Failed to update recipe tags:', errorMessage)
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Network error while updating tags'
+      setTagUpdateError(errorMessage)
+      console.error('Error updating recipe tags:', error)
+    } finally {
+      setIsUpdatingTags(false)
+    }
   }
 
   const handleUrlImport = async () => {
@@ -308,7 +344,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
             action: {
               label: "Import Manually",
               onClick: () => {
-                setImportedRecipe({ title: "", rawIngredients: [], instructions: "" })
+                setImportedRecipe({ title: "", rawIngredients: [], instructions: "", tags: [] })
                 setIsManualMode(true)
                 setIsImportDialogOpen(true)
               },
@@ -321,7 +357,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
         action: {
           label: "Import Manually",
           onClick: () => {
-            setImportedRecipe({ title: "", rawIngredients: [], instructions: "" })
+            setImportedRecipe({ title: "", rawIngredients: [], instructions: "", tags: [] })
             setIsManualMode(true)
             setIsImportDialogOpen(true)
           },
@@ -397,7 +433,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
             <DropdownMenuContent>
               <DropdownMenuItem
                 onSelect={() => {
-                  setImportedRecipe({ title: "", rawIngredients: [], instructions: "" })
+                  setImportedRecipe({ title: "", rawIngredients: [], instructions: "", tags: [] })
                   setIsManualMode(true)
                   setIsImportDialogOpen(true)
                 }}
@@ -542,9 +578,63 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                 <h2 className="text-lg font-semibold mb-2">Instructions</h2>
                 <p className="whitespace-pre-line">{selectedRecipe?.instructions}</p>
               </div>
+              <div>
+                <h2 className="text-lg font-semibold mb-2">Tags</h2>
+                <RecipeTagEditor 
+                  recipe={selectedRecipe} 
+                  onTagsChange={handleRecipeTagsChange}
+                  isUpdating={isUpdatingTags}
+                  error={tagUpdateError}
+                />
+              </div>
             </div>
           </SheetContent>
         </Sheet>
+      )}
+    </div>
+  )
+}
+
+type RecipeTagEditorProps = {
+  recipe: Recipe | null
+  onTagsChange: (recipeId: number, tags: string[]) => void
+  isUpdating?: boolean
+  error?: string | null
+}
+
+function RecipeTagEditor({ recipe, onTagsChange, isUpdating = false, error }: RecipeTagEditorProps) {
+  if (!recipe) return null
+
+  const currentTags = recipe.tags ? JSON.parse(recipe.tags) : []
+
+  return (
+    <div className="space-y-2">
+      <TagInput
+        tags={currentTags}
+        onTagsChange={(newTags) => onTagsChange(recipe.id, newTags)}
+        placeholder="Add tags like 'vegan', 'quick', 'dinner'..."
+        disabled={isUpdating}
+        getSuggestions={async (query: string) => {
+          try {
+            const response = await fetch(`/api/tags?query=${encodeURIComponent(query)}`)
+            if (response.ok) {
+              const data = await response.json()
+              return data.suggestions || []
+            }
+          } catch (error) {
+            console.warn('Failed to fetch tag suggestions:', error)
+          }
+          return []
+        }}
+      />
+      {isUpdating && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
+          <span>Saving tags...</span>
+        </div>
+      )}
+      {error && (
+        <p className="text-sm text-destructive">{error}</p>
       )}
     </div>
   )
@@ -596,21 +686,19 @@ function ImportRecipeDialog({
     if (!recipe) return
 
     try {
-      // Prepare recipe data with video metadata if available
+      // Prepare recipe data with tags and video metadata
+      const userTags = recipe.tags || []
+      const videoTags = recipe.sourceUrl && recipe.videoMetadata ? [
+        `source:video:${recipe.videoMetadata.platform}`,
+        `extracted:${recipe.videoMetadata.extractedAt}`,
+        ...(recipe.videoMetadata.videoId ? [`video-id:${recipe.videoMetadata.videoId}`] : []),
+        ...(recipe.videoMetadata.duration ? [`duration:${recipe.videoMetadata.duration}s`] : []),
+        ...(recipe.sourceUrl ? [`source-url:${recipe.sourceUrl}`] : [])
+      ] : []
+      
       const recipeData = {
         ...recipe,
-        // Include video metadata in tags field for storage
-        ...(recipe.sourceUrl && recipe.videoMetadata && {
-          tags: JSON.stringify([
-            ...(recipe.videoMetadata ? [
-              `source:video:${recipe.videoMetadata.platform}`,
-              `extracted:${recipe.videoMetadata.extractedAt}`,
-              ...(recipe.videoMetadata.videoId ? [`video-id:${recipe.videoMetadata.videoId}`] : []),
-              ...(recipe.videoMetadata.duration ? [`duration:${recipe.videoMetadata.duration}s`] : [])
-            ] : []),
-            ...(recipe.sourceUrl ? [`source-url:${recipe.sourceUrl}`] : [])
-          ])
-        })
+        tags: JSON.stringify([...userTags, ...videoTags])
       }
 
       const res = await fetch('/api/recipes', {
@@ -747,6 +835,7 @@ function ValidateRecipeForm({
   loading,
 }: ValidateRecipeFormProps) {
   const [showTranscription, setShowTranscription] = useState(false)
+  const [tagError, setTagError] = useState<string | null>(null)
   
   const handleRecipeChange = (
     field: keyof ImportedRecipe,
@@ -754,10 +843,14 @@ function ValidateRecipeForm({
   ) => {
     if (recipe) {
       setRecipe({ ...recipe, [field]: value });
+      // Clear tag error when user makes changes
+      if (field === 'tags') {
+        setTagError(null)
+      }
     }
   };
 
-  const currentRecipe = recipe || { title: '', rawIngredients: [], instructions: '' };
+  const currentRecipe = recipe || { title: '', rawIngredients: [], instructions: '', tags: [] };
   const isVideoImport = currentRecipe.sourceUrl && currentRecipe.videoMetadata
 
   if (!recipe && !isManualMode) return null
@@ -794,6 +887,32 @@ function ValidateRecipeForm({
           onChange={(e) => handleRecipeChange('instructions', e.target.value)}
           placeholder="Enter cooking instructions"
         />
+      </div>
+      <div>
+        <label className="block text-sm font-medium mb-1">Tags</label>
+        <TagInput
+          tags={currentRecipe.tags || []}
+          onTagsChange={(tags) => handleRecipeChange('tags', tags)}
+          placeholder="Add tags like 'vegan', 'quick', 'dinner'..."
+          getSuggestions={async (query: string) => {
+            try {
+              const response = await fetch(`/api/tags?query=${encodeURIComponent(query)}`)
+              if (response.ok) {
+                const data = await response.json()
+                return data.suggestions || []
+              } else {
+                setTagError('Failed to load tag suggestions')
+              }
+            } catch (error) {
+              setTagError('Network error loading suggestions')
+              console.warn('Failed to fetch tag suggestions:', error)
+            }
+            return []
+          }}
+        />
+        {tagError && (
+          <p className="text-sm text-destructive mt-1">{tagError}</p>
+        )}
       </div>
       {/* Action Buttons */}
       <div className="flex gap-2 pt-2">

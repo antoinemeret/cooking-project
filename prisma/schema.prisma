@@ -138,3 +138,13 @@ model PerformanceMetrics {
   lastUpdated             DateTime @updatedAt
   createdAt               DateTime @default(now())
 }
+
+model TagUsage {
+  id        Int      @id @default(autoincrement())
+  userId    String   // User identifier (from session or meal plan)
+  tag       String
+  frequency Int      @default(1)
+  lastUsed  DateTime @default(now())
+
+  @@unique([userId, tag])
+}

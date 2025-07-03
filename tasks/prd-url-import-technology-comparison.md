@@ -31,7 +31,7 @@ This feature will create a side-by-side comparison system to evaluate different 
 1. The system must process the same URL simultaneously with both the current Ollama solution and the new traditional parsing approach.
 2. The system must display structured recipe data (title, ingredients, instructions) side-by-side for both technologies.
 3. The system must provide buttons to act success or failure for each recipe data sets.
-4. The system must be integrated into the existing recipe import flow as a manual toggle/comparison mode (saving the right data must be possible)
+4. The system must be integrated into the existing recipe import flow as a manual toggle/comparison mode (saving the success data must be possible)
 5. The system must track and display success/failure rates for both technologies.
 6. The system must measure and display processing times for performance comparison.
 

@@ -1,5 +1,31 @@
 import '@testing-library/jest-dom'
 
+// Polyfill for Node.js Web APIs needed for API route testing
+import { TextEncoder, TextDecoder } from 'util'
+
+// Add Web APIs polyfills for server-side API testing
+if (typeof global.TextEncoder === 'undefined') {
+  global.TextEncoder = TextEncoder
+}
+
+if (typeof global.TextDecoder === 'undefined') {
+  global.TextDecoder = TextDecoder
+}
+
+// Polyfill URL if not available
+if (typeof global.URL === 'undefined') {
+  const { URL, URLSearchParams } = require('url')
+  global.URL = URL
+  global.URLSearchParams = URLSearchParams
+}
+
+// Polyfill Request and Response for API route testing
+if (typeof global.Request === 'undefined') {
+  const { Request, Response } = require('node-fetch')
+  global.Request = Request
+  global.Response = Response
+}
+
 // Mock IntersectionObserver
 global.IntersectionObserver = class IntersectionObserver {
   constructor() {}

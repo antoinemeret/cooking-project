@@ -12,6 +12,7 @@ export type Recipe = {
   summary: string
   instructions: string
   rawIngredients: string // JSON string of ingredients
+  tags?: string // JSON string of tags
   startSeason: number
   endSeason: number
   grade: number
