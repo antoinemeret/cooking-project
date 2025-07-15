@@ -33,6 +33,8 @@ export interface TagInputProps {
   allowCreate?: boolean
   /** Custom validation function */
   onValidate?: (tag: string, existingTags: string[]) => { isValid: boolean; error?: string }
+  /** Callback when dropdown open state changes */
+  onDropdownOpenChange?: (open: boolean) => void
 }
 
 export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
@@ -46,6 +48,7 @@ export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
     className,
     allowCreate = true,
     onValidate,
+    onDropdownOpenChange,
     ...props
   }, ref) => {
     const [inputValue, setInputValue] = React.useState("")
@@ -64,6 +67,7 @@ export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
         if (!inputValue.trim() || !getSuggestions) {
           setSuggestions([])
           setShowSuggestions(false)
+          if (onDropdownOpenChange) onDropdownOpenChange(false)
           return
         }
 
@@ -78,11 +82,13 @@ export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
           
           setSuggestions(filteredSuggestions)
           setShowSuggestions(filteredSuggestions.length > 0)
+          if (onDropdownOpenChange) onDropdownOpenChange(filteredSuggestions.length > 0)
           setSelectedIndex(-1)
         } catch (error) {
           console.warn('Failed to fetch tag suggestions:', error)
           setSuggestions([])
           setShowSuggestions(false)
+          if (onDropdownOpenChange) onDropdownOpenChange(false)
         } finally {
           setIsLoading(false)
         }
@@ -102,6 +108,7 @@ export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
       if (!value.trim()) {
         setShowSuggestions(false)
         setSuggestions([])
+        if (onDropdownOpenChange) onDropdownOpenChange(false)
       }
     }
 
@@ -231,6 +238,7 @@ export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
     const handleInputFocus = () => {
       if (suggestions.length > 0) {
         setShowSuggestions(true)
+        if (onDropdownOpenChange) onDropdownOpenChange(true)
       }
     }
 
@@ -244,6 +252,7 @@ export const TagInput = React.forwardRef<HTMLDivElement, TagInputProps>(
         ) {
           setShowSuggestions(false)
           setSelectedIndex(-1)
+          if (onDropdownOpenChange) onDropdownOpenChange(false)
         }
       }
 

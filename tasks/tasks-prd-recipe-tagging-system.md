@@ -8,14 +8,14 @@
 - `src/app/api/tags/route.test.ts` - Unit tests for tag API endpoints
 - `src/app/api/recipes/[id]/route.ts` - API endpoint for updating individual recipe tags
 - `src/app/api/recipes/import-video/route.ts` - Enhanced to include LLM auto-tagging (existing file)
-- `src/app/api/recipes/import-photo/route.ts` - Enhanced to include LLM auto-tagging (existing file)
+- `src/app/api/recipes/import-photo/route.ts` - Enhanced to include LLM tag suggestion integration (suggestedTags, suggestedTagsRaw)
 - `src/app/api/recipes/route.ts` - Enhanced to include tag filtering and creation (existing file)
 - `src/app/recipes/[id]/page.tsx` - Enhanced to include tag editing in recipe sheet (existing file)
 - `src/app/recipes/page.tsx` - Enhanced to include tag filtering functionality (existing file)
-- `src/lib/ai-prompts.ts` - Enhanced with tag suggestion prompts (existing file)
-- `src/lib/ai-client.ts` - Enhanced with tag suggestion methods (existing file)
+- `src/lib/ai-prompts.ts` - Contains system prompts for recipe assistant and LLM tag suggestion (now includes TAG_SUGGESTION_PROMPT)
+- `src/lib/ai-client.ts` - Enhanced with getRecipeTagSuggestions for LLM tag comparison (now includes model comparison capability)
 - `scripts/backfill-recipe-tags.ts` - Script to backfill existing recipes with LLM-generated tags
-- `prisma/schema.prisma` - Updated to add TagUsage model for per-user tag frequency tracking
+- prisma/schema.prisma` - Updated to add TagUsage model for per-user tag frequency tracking
 - prisma/migrations/20250703101432_add_tag_usage_table/migration.sql: Migration for TagUsage table
 - `src/app/recipes/data-table.tsx`: Integrated TagInput component into ValidateRecipeForm for manual and imported recipe creation
 
@@ -48,15 +48,13 @@
   - [x] 2.7 Ensure tag changes are properly persisted to database
 
 - [ ] 3.0 Add LLM Auto-Tagging for Recipe Import Pipeline
-  - [ ] 3.1 Add tag suggestion prompts to `src/lib/ai-prompts.ts` for recipe analysis
-  - [ ] 3.2 Create tag suggestion method in `src/lib/ai-client.ts` with model comparison capability
+  - [x] 3.1 Add tag suggestion prompts to `src/lib/ai-prompts.ts` for recipe analysis
+  - [x] 3.2 Create tag suggestion method in `src/lib/ai-client.ts` with model comparison capability
   - [ ] 3.3 Integrate LLM tag suggestions into `src/app/api/recipes/import-video/route.ts`
-  - [ ] 3.4 Integrate LLM tag suggestions into `src/app/api/recipes/import-photo/route.ts`
-  - [ ] 3.5 Enhance import dialog to show suggested tags for user review and editing
-  - [ ] 3.6 Implement tag review functionality (approve, reject, modify) in import flow
-  - [ ] 3.7 Add performance testing script to compare Llama vs Mistral vs DeepSeek models
-  - [ ] 3.8 Ensure suggested tags are not saved without user approval
-  - [ ] 3.9 Test LLM integration with various recipe types and content
+  - [x] 3.4 Integrate LLM tag suggestions into `src/app/api/recipes/import-photo/route.ts`
+  - [x] 3.5 Enhance import dialog to show suggested tags for user review and editing
+  - [ ] 3.6 Add performance testing script to compare Llama vs Mistral vs DeepSeek models
+  - [ ] 3.7 Test LLM integration with various recipe types and content
 
 - [ ] 4.0 Implement Tag Filtering and Display Features
   - [ ] 4.1 Make tags clickable on recipe cards to trigger filtering

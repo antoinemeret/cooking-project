@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
 import { parseTraditional, isRecipeDataMeaningful } from '@/lib/scrapers/traditional-parser'
+import { getRecipeTagSuggestions } from '@/lib/ai-client'
 
 async function extractRecipeWithLLM(prompt: any) {
   let output = ''
@@ -139,7 +140,7 @@ export async function POST(req: NextRequest) {
       console.log('Traditional parsing successful, using structured data')
       
       // Convert traditional parser result to expected format
-      const recipe = {
+      const recipe: any = {
         title: traditionalResult.recipe.title || "Recipe",
         rawIngredients: traditionalResult.recipe.ingredients || [],
         instructions: traditionalResult.recipe.instructions?.join('\n\n') || traditionalResult.recipe.summary || "",
@@ -148,16 +149,44 @@ export async function POST(req: NextRequest) {
         processingTime: traditionalResult.processingTime
       }
       
+      // Get LLM tag suggestions
+      try {
+        const tagResults = await getRecipeTagSuggestions({
+          title: recipe.title,
+          ingredients: recipe.rawIngredients,
+          instructions: recipe.instructions
+        })
+        recipe.suggestedTags = tagResults.claude?.tags || []
+        recipe.suggestedTagsRaw = tagResults.claude?.raw || ''
+      } catch (err) {
+        recipe.suggestedTags = []
+        recipe.suggestedTagsRaw = ''
+      }
+      
       console.log('API response (traditional):', recipe)
       return NextResponse.json({ recipe })
     }
     
     // Fall back to LLM if traditional parsing failed or returned insufficient data
     console.log('Traditional parsing failed or insufficient data, falling back to LLM...')
-    const recipe = await callLLM(html, url)
+    const recipe: any = await callLLM(html, url)
     
     // Add fallback indicator
     recipe.parsingMethod = 'llm-fallback'
+    
+    // Get LLM tag suggestions
+    try {
+      const tagResults = await getRecipeTagSuggestions({
+        title: recipe.title,
+        ingredients: recipe.rawIngredients,
+        instructions: recipe.instructions
+      })
+      recipe.suggestedTags = tagResults.claude?.tags || []
+      recipe.suggestedTagsRaw = tagResults.claude?.raw || ''
+    } catch (err) {
+      recipe.suggestedTags = []
+      recipe.suggestedTagsRaw = ''
+    }
     
     console.log('API response (LLM fallback):', recipe)
     return NextResponse.json({ recipe })

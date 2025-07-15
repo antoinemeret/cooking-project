@@ -14,6 +14,7 @@ model Recipe {
   instructions String
   rawIngredients String // Store original ingredients list as JSON string
   tags        String   @default("[]") // JSON array of tags (vegetarian, dairy free, salad, etc.)
+  metadata    String   @default("{}") // JSON object for import metadata
   ingredients  Ingredient[] @relation("RecipeIngredients")
   startSeason  Int      // 1 to 12 (January to December)
   endSeason    Int      // 1 to 12 (January to December)

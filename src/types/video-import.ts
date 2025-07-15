@@ -51,6 +51,8 @@ export interface ExtractedRecipeData {
     extractedAt: string
     recipeId?: number
   }
+  suggestedTags?: string[]
+  suggestedTagsRaw?: string
 }
 
 /**

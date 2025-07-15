@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { addTagToCanonicalList } from '@/lib/tag-utils'
 
 export async function PATCH(
   request: NextRequest,
@@ -23,6 +24,18 @@ export async function PATCH(
       data: { tags },
       include: { ingredients: true }
     })
+
+    // Add new tags to the canonical list
+    try {
+      const newTags = JSON.parse(tags)
+      if (Array.isArray(newTags)) {
+        for (const tag of newTags) {
+          await addTagToCanonicalList(tag, 'default')
+        }
+      }
+    } catch (error) {
+      console.error('Error adding tags to canonical list:', error)
+    }
 
     return NextResponse.json({ recipe: updatedRecipe })
   } catch (error) {

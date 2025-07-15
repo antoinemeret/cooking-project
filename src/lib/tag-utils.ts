@@ -1,3 +1,5 @@
+import { prisma } from './prisma'
+
 export interface TagSuggestion {
   tag: string
   frequency: number
@@ -20,7 +22,7 @@ export function normalizeTag(tag: string): string {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-    .replace(/[^\w\s-&]/g, '') // Allow only alphanumeric, spaces, hyphens, and ampersands
+    .replace(/[^\p{L}\p{N}\s\-&]/gu, '') // Allow letters (including accented), numbers, spaces, hyphens, and ampersands
 }
 
 /**
@@ -276,4 +278,101 @@ export function extractTagCategories(recipeContent: {
   })
   
   return categories
+}
+
+/**
+ * Fetch canonical tags from the database
+ * Returns a list of tags that have been used by users, sorted by frequency
+ */
+export async function getCanonicalTags(limit: number = 100): Promise<string[]> {
+  try {
+    // Use any type to bypass TypeScript issues temporarily
+    const tagUsage = await (prisma as any).tagUsage.findMany({
+      orderBy: [
+        { frequency: 'desc' },
+        { lastUsed: 'desc' }
+      ],
+      take: limit,
+      select: {
+        tag: true
+      }
+    })
+    
+    if (Array.isArray(tagUsage) && tagUsage.length > 0) {
+      return tagUsage.map((t: { tag: string }) => t.tag)
+    }
+    
+    // If no tags in database, return curated list
+    return [
+      'vegan', 'vegetarian', 'gluten-free', 'dairy-free', 'quick', 'easy',
+      'dinner', 'lunch', 'breakfast', 'dessert', 'snack', 'appetizer',
+      'italian', 'french', 'mediterranean', 'asian', 'mexican', 'indian',
+      'baked', 'grilled', 'fried', 'slow-cooked', 'one-pot', 'healthy',
+      'comfort-food', 'spicy', 'sweet', 'savory', 'fresh', 'seasonal',
+      'chicken', 'beef', 'fish', 'pasta', 'rice', 'salad', 'soup', 'stew',
+      'breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack'
+    ]
+  } catch (error) {
+    console.error('Error fetching canonical tags from database:', error)
+    // Return curated list as fallback
+    return [
+      'vegan', 'vegetarian', 'gluten-free', 'dairy-free', 'quick', 'easy',
+      'dinner', 'lunch', 'breakfast', 'dessert', 'snack', 'appetizer',
+      'italian', 'french', 'mediterranean', 'asian', 'mexican', 'indian',
+      'baked', 'grilled', 'fried', 'slow-cooked', 'one-pot', 'healthy',
+      'comfort-food', 'spicy', 'sweet', 'savory', 'fresh', 'seasonal',
+      'chicken', 'beef', 'fish', 'pasta', 'rice', 'salad', 'soup', 'stew',
+      'breakfast', 'brunch', 'lunch', 'dinner', 'dessert', 'snack'
+    ]
+  }
+}
+
+/**
+ * Add a new tag to the canonical list or update its usage frequency
+ */
+export async function addTagToCanonicalList(tag: string, userId: string = 'default'): Promise<void> {
+  try {
+    await (prisma as any).tagUsage.upsert({
+      where: {
+        userId_tag: {
+          userId,
+          tag
+        }
+      },
+      update: {
+        frequency: {
+          increment: 1
+        },
+        lastUsed: new Date()
+      },
+      create: {
+        userId,
+        tag,
+        frequency: 1,
+        lastUsed: new Date()
+      }
+    })
+    console.log(`Tag "${tag}" added to canonical list for user "${userId}"`)
+  } catch (error) {
+    console.error('Error adding tag to canonical list:', error)
+  }
+}
+
+/**
+ * Get a dynamic tag suggestion prompt that includes the canonical tag list
+ */
+export async function getDynamicTagSuggestionPrompt(): Promise<string> {
+  const canonicalTags = await getCanonicalTags(50) // Limit to top 50 most used tags
+  
+  return `You are an expert recipe tagging assistant. Given a recipe's title, ingredients, and instructions, analyze the content and return a concise list of relevant tags.
+
+IMPORTANT RULES:
+1. Only use tags from this canonical list: ${JSON.stringify(canonicalTags)}
+2. Do NOT invent new tags or use synonyms not in the list above
+3. Do NOT add "free-from" or allergy tags unless the recipe explicitly states it
+4. Do NOT add generic ingredient tags unless they are a main component
+5. Use only one tag for each concept (e.g., use "vegan", not "vegan-friendly" or "plant-based")
+6. Do NOT use tags about ingredients that are not mentioned in the recipe
+
+Return only a JSON array of strings from the canonical list above, no explanations or extra text.`
 } 

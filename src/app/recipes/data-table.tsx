@@ -28,13 +28,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { Sheet, SheetContent, SheetTitle, SheetClose } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
 import { toast } from "sonner"
 import { detectVideoUrl, getPlatformDisplayName } from "@/lib/video-url-detector"
 import { VideoProgressTracker, VideoProcessingProgress, VideoProcessingStage } from "@/components/recipes/VideoProgressTracker"
 import { ExtractedRecipeData, VideoPlatform } from "@/types/video-import"
 import { TagInput, TagSuggestion } from "@/components/ui/tag-input"
+import { XIcon } from 'lucide-react'
 
 type ImportedRecipe = {
   id?: number
@@ -51,6 +52,7 @@ type ImportedRecipe = {
     duration?: number
     extractedAt: string
   }
+  suggestedTags?: string[]
 }
 
 export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], onRefresh: () => void, loading: boolean }) {
@@ -73,9 +75,11 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
   // Video processing progress state
   const [videoProgress, setVideoProgress] = useState<VideoProcessingProgress | null>(null)
   const [isVideoProcessing, setIsVideoProcessing] = useState(false)
-  const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null)
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editFields, setEditFields] = useState<{ title: string; rawIngredients: string; instructions: string }>({ title: '', rawIngredients: '', instructions: '' })
   const [tagUpdateError, setTagUpdateError] = useState<string | null>(null)
   const [isUpdatingTags, setIsUpdatingTags] = useState(false)
+  const titleInputRef = useRef<HTMLInputElement>(null)
 
   const openReviewDialog = (recipe: ImportedRecipe) => {
     setImportedRecipe(recipe)
@@ -224,7 +228,8 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                 } : {
                   platform: platform.toLowerCase() as VideoPlatform,
                   extractedAt: new Date().toISOString()
-                }
+                },
+                suggestedTags: videoRecipeData.suggestedTags || []
               }
               
               // Final success state
@@ -328,7 +333,9 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
         const { done, value } = await reader.read()
         if (done) break
         const chunk = decoder.decode(value, { stream: true })
+        console.log('Received chunk:', chunk)
         const eventData = JSON.parse(chunk)
+        console.log('Parsed event data:', eventData)
 
         if (eventData.status) {
           setImportStatus(eventData.status)
@@ -385,6 +392,17 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
     onGlobalFilterChange: setSearchTerm,
   })
 
+  useEffect(() => {
+    if (isEditMode && titleInputRef.current) {
+      titleInputRef.current.focus()
+      titleInputRef.current.select()
+    }
+  }, [isEditMode])
+
+  // Debug log for Input component used in sheet edit mode
+  console.log('Sheet edit mode Input component:', Input)
+  // Debug log for selectedRecipe before rendering Sheet
+  console.log('selectedRecipe', selectedRecipe)
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -561,32 +579,130 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
         <Sheet open={selectedRecipe !== null} onOpenChange={(open) => {
           if (!open) setSelectedRecipe(null)
         }}>
-          <SheetContent className="w-[50%] min-w-[320px] p-6 flex flex-col gap-6">
-            <SheetHeader>
-              <SheetTitle className="text-2xl font-bold">{selectedRecipe?.title}</SheetTitle>
-            </SheetHeader>
+          <SheetContent className="w-[50%] min-w-[320px] p-6 flex flex-col gap-6" showCloseButton={!isEditMode}>
+            <SheetTitle className="sr-only">{selectedRecipe?.title || 'Recipe Details'}</SheetTitle>
+            {!isEditMode && (
+              <div className="text-2xl font-bold mt-2 mb-4">{selectedRecipe?.title}</div>
+            )}
+            {/* Sticky close button in edit mode */}
+            {isEditMode && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Close Edit Mode"
+                onClick={() => setIsEditMode(false)}
+                className="absolute top-4 right-4 z-50"
+              >
+                <XIcon className="w-5 h-5" />
+              </Button>
+            )}
+            <div className="flex items-center justify-between">
+              <div className="flex gap-2 ml-auto">
+                {!isEditMode && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Edit Recipe"
+                    onClick={() => {
+                      setIsEditMode(true)
+                      setEditFields({
+                        title: selectedRecipe?.title || '',
+                        rawIngredients: selectedRecipe?.rawIngredients ? JSON.parse(selectedRecipe.rawIngredients).join('\n') : '',
+                        instructions: selectedRecipe?.instructions || ''
+                      })
+                    }}
+                    disabled={isEditMode}
+                    className="flex items-center gap-1"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                      <path d="M17.414 2.586a2 2 0 0 0-2.828 0l-9.5 9.5A2 2 0 0 0 4 13.414V16a1 1 0 0 0 1 1h2.586a2 2 0 0 0 1.414-.586l9.5-9.5a2 2 0 0 0 0-2.828l-2-2ZM15 4l1 1-9.5 9.5H5v-1.5L15 4Z" />
+                    </svg>
+                    Edit
+                  </Button>
+                )}
+                {!isEditMode && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Delete Recipe"
+                    onClick={() => console.log('Delete clicked')}
+                    disabled={isEditMode}
+                    className="flex items-center gap-1"
+                  >
+                    {/* Trash icon from Lucide */}
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-5 h-5">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14z" />
+                    </svg>
+                    Delete
+                  </Button>
+                )}
+              </div>
+            </div>
             <div className="flex flex-col gap-4">
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Ingredients</h2>
-                <ul className="list-disc list-inside pl-4 space-y-1">
-                  {selectedRecipe?.rawIngredients && JSON.parse(selectedRecipe.rawIngredients).map((ingredient: string) => (
-                    <li key={ingredient}>{ingredient}</li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Instructions</h2>
-                <p className="whitespace-pre-line">{selectedRecipe?.instructions}</p>
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Tags</h2>
-                <RecipeTagEditor 
-                  recipe={selectedRecipe} 
-                  onTagsChange={handleRecipeTagsChange}
-                  isUpdating={isUpdatingTags}
-                  error={tagUpdateError}
-                />
-              </div>
+              {isEditMode ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Title</label>
+                    <Input
+                      ref={titleInputRef}
+                      value={editFields.title}
+                      onChange={e => setEditFields(f => ({ ...f, title: e.target.value }))}
+                      placeholder="Enter recipe title"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Ingredients</label>
+                    <textarea
+                      className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows={5}
+                      value={editFields.rawIngredients}
+                      onChange={e => setEditFields(f => ({ ...f, rawIngredients: e.target.value }))}
+                      placeholder="Enter ingredients, one per line"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Enter each ingredient on a new line</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Instructions</label>
+                    <textarea
+                      className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows={8}
+                      value={editFields.instructions}
+                      onChange={e => setEditFields(f => ({ ...f, instructions: e.target.value }))}
+                      placeholder="Enter cooking instructions"
+                    />
+                  </div>
+                  {/* Footer with full-width Save button */}
+                  <div className="mt-6 flex justify-end border-t pt-4">
+                    <Button variant="default" className="w-full" onClick={() => {/* save logic here */}}>
+                      Save
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <h2 className="text-lg font-semibold mb-2">Ingredients</h2>
+                    <ul className="list-disc list-inside pl-4 space-y-1">
+                      {selectedRecipe?.rawIngredients && JSON.parse(selectedRecipe.rawIngredients).map((ingredient: string) => (
+                        <li key={ingredient}>{ingredient}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold mb-2">Instructions</h2>
+                    <p className="whitespace-pre-line">{selectedRecipe?.instructions}</p>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold mb-2">Tags</h2>
+                    <RecipeTagEditor 
+                      recipe={selectedRecipe} 
+                      onTagsChange={handleRecipeTagsChange}
+                      isUpdating={isUpdatingTags}
+                      error={tagUpdateError}
+                    />
+                  </div>
+                </>
+              )}
             </div>
           </SheetContent>
         </Sheet>
@@ -836,7 +952,11 @@ function ValidateRecipeForm({
 }: ValidateRecipeFormProps) {
   const [showTranscription, setShowTranscription] = useState(false)
   const [tagError, setTagError] = useState<string | null>(null)
-  
+  const tagInputRef = useRef<HTMLDivElement>(null)
+  const formContentRef = useRef<HTMLDivElement>(null)
+  const [tagDropdownOpen, setTagDropdownOpen] = useState(false)
+  const [usedSuggestedTags, setUsedSuggestedTags] = useState(false)
+
   const handleRecipeChange = (
     field: keyof ImportedRecipe,
     value: string | string[]
@@ -846,9 +966,44 @@ function ValidateRecipeForm({
       // Clear tag error when user makes changes
       if (field === 'tags') {
         setTagError(null)
+        setUsedSuggestedTags(false)
       }
     }
   };
+
+  // Pre-populate tags with suggestedTags if present and tags is empty
+  useEffect(() => {
+    if (
+      recipe &&
+      Array.isArray(recipe.suggestedTags) &&
+      recipe.suggestedTags.length > 0 &&
+      (!Array.isArray(recipe.tags) || recipe.tags.length === 0) &&
+      !usedSuggestedTags
+    ) {
+      setRecipe({ ...recipe, tags: recipe.suggestedTags })
+      setUsedSuggestedTags(true)
+    }
+  }, [recipe, setRecipe, usedSuggestedTags])
+
+  // Auto-scroll tag input into view when dropdown opens
+  useEffect(() => {
+    if (tagDropdownOpen && tagInputRef.current && formContentRef.current) {
+      const tagEl = tagInputRef.current
+      const formEl = formContentRef.current
+      const tagRect = tagEl.getBoundingClientRect()
+      const formRect = formEl.getBoundingClientRect()
+      // Calculate offset relative to scroll container
+      const tagTop = tagEl.offsetTop
+      const tagBottom = tagTop + tagEl.offsetHeight + 220 // 220px for dropdown height
+      const visibleTop = formEl.scrollTop
+      const visibleBottom = visibleTop + formEl.clientHeight
+      if (tagTop < visibleTop) {
+        formEl.scrollTo({ top: tagTop - 16, behavior: 'smooth' })
+      } else if (tagBottom > visibleBottom) {
+        formEl.scrollTo({ top: tagBottom - formEl.clientHeight + 16, behavior: 'smooth' })
+      }
+    }
+  }, [tagDropdownOpen])
 
   const currentRecipe = recipe || { title: '', rawIngredients: [], instructions: '', tags: [] };
   const isVideoImport = currentRecipe.sourceUrl && currentRecipe.videoMetadata
@@ -856,66 +1011,72 @@ function ValidateRecipeForm({
   if (!recipe && !isManualMode) return null
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Video Source Information (removed for video imports) */}
-      {/* Recipe Fields */}
-      <div>
-        <label className="block text-sm font-medium mb-1">Title</label>
-        <Input
-          value={currentRecipe.title}
-          onChange={(e) => handleRecipeChange('title', e.target.value)}
-          placeholder="Enter recipe title"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">Ingredients</label>
-        <textarea
-          className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          rows={5}
-          value={(currentRecipe.rawIngredients || []).join('\n')}
-          onChange={(e) => handleRecipeChange('rawIngredients', e.target.value.split('\n').filter(line => line.trim()))}
-          placeholder="Enter ingredients, one per line"
-        />
-        <p className="text-xs text-gray-500 mt-1">Enter each ingredient on a new line</p>
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">Instructions</label>
-        <textarea
-          className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          rows={8}
-          value={currentRecipe.instructions}
-          onChange={(e) => handleRecipeChange('instructions', e.target.value)}
-          placeholder="Enter cooking instructions"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">Tags</label>
-        <TagInput
-          tags={currentRecipe.tags || []}
-          onTagsChange={(tags) => handleRecipeChange('tags', tags)}
-          placeholder="Add tags like 'vegan', 'quick', 'dinner'..."
-          getSuggestions={async (query: string) => {
-            try {
-              const response = await fetch(`/api/tags?query=${encodeURIComponent(query)}`)
-              if (response.ok) {
-                const data = await response.json()
-                return data.suggestions || []
-              } else {
-                setTagError('Failed to load tag suggestions')
+    <div className="relative">
+      <div
+        ref={formContentRef}
+        className="flex flex-col gap-4 overflow-y-auto max-h-[70vh] pb-56 pr-2"
+      >
+        {/* Video Source Information (removed for video imports) */}
+        {/* Recipe Fields */}
+        <div>
+          <label className="block text-sm font-medium mb-1">Title</label>
+          <Input
+            value={currentRecipe.title}
+            onChange={(e) => handleRecipeChange('title', e.target.value)}
+            placeholder="Enter recipe title"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Ingredients</label>
+          <textarea
+            className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            rows={5}
+            value={(currentRecipe.rawIngredients || []).join('\n')}
+            onChange={(e) => handleRecipeChange('rawIngredients', e.target.value.split('\n').filter(line => line.trim()))}
+            placeholder="Enter ingredients, one per line"
+          />
+          <p className="text-xs text-gray-500 mt-1">Enter each ingredient on a new line</p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Instructions</label>
+          <textarea
+            className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            rows={8}
+            value={currentRecipe.instructions}
+            onChange={(e) => handleRecipeChange('instructions', e.target.value)}
+            placeholder="Enter cooking instructions"
+          />
+        </div>
+        <div ref={tagInputRef}>
+          <label className="block text-sm font-medium mb-1">Tags</label>
+          <TagInput
+            tags={currentRecipe.tags || []}
+            onTagsChange={(tags) => handleRecipeChange('tags', tags)}
+            placeholder="Add tags like 'vegan', 'quick', 'dinner'..."
+            getSuggestions={async (query: string) => {
+              try {
+                const response = await fetch(`/api/tags?query=${encodeURIComponent(query)}`)
+                if (response.ok) {
+                  const data = await response.json()
+                  return data.suggestions || []
+                } else {
+                  setTagError('Failed to load tag suggestions')
+                }
+              } catch (error) {
+                setTagError('Network error loading suggestions')
+                console.warn('Failed to fetch tag suggestions:', error)
               }
-            } catch (error) {
-              setTagError('Network error loading suggestions')
-              console.warn('Failed to fetch tag suggestions:', error)
-            }
-            return []
-          }}
-        />
-        {tagError && (
-          <p className="text-sm text-destructive mt-1">{tagError}</p>
-        )}
+              return []
+            }}
+            onDropdownOpenChange={setTagDropdownOpen}
+          />
+          {tagError && (
+            <p className="text-sm text-destructive mt-1">{tagError}</p>
+          )}
+        </div>
       </div>
-      {/* Action Buttons */}
-      <div className="flex gap-2 pt-2">
+      {/* Sticky Save Button */}
+      <div className="sticky bottom-0 left-0 w-full bg-background pt-4 pb-4 flex gap-2 z-10 border-t border-gray-200">
         <Button onClick={onValidate} disabled={loading} className="flex-1">
           {loading ? 'Saving...' : 'Save Recipe'}
         </Button>
