@@ -48,17 +48,17 @@
   - [ ] 2.5 Add unit tests for entering/exiting edit mode, editing fields, and footer visibility.
 
 - [ ] 3.0 Implement Save, Optimistic UI, and Feedback Mechanisms
-  - [ ] 3.1 On "Save", optimistically update the UI with the new recipe data.
-  - [ ] 3.2 Send a PATCH/PUT request to the API to persist changes.
-  - [ ] 3.3 On success, show a "Changes saved" toast using shadcn Sonner.
-  - [ ] 3.4 On failure, show an error alert using shadcn Alert with the reason.
+  - [x] 3.1 On "Save", optimistically update the UI with the new recipe data.
+  - [x] 3.2 Send a PATCH/PUT request to the API to persist changes.
+  - [x] 3.3 On success, show a "Changes saved" toast using shadcn Sonner.
+  - [x] 3.4 On failure, show an error alert using shadcn Alert with the reason.
   - [ ] 3.5 Add unit tests for optimistic updates, toast/alert feedback, and error handling.
 
-- [ ] 4.0 Implement Delete Flow with Confirmation Dialog
-  - [ ] 4.1 On "delete" click, open a confirmation dialog.
-  - [ ] 4.2 If confirmed, send a DELETE request to the API and close the sheet on success.
-  - [ ] 4.3 Ensure deletion is permanent (no undo/soft delete).
-  - [ ] 4.4 Add unit tests for the delete flow, dialog, and sheet closing behavior.
+- [x] 4.0 Implement Delete Flow with Confirmation Dialog
+  - [x] 4.1 On "delete" click, open a confirmation dialog.
+  - [x] 4.2 If confirmed, send a DELETE request to the API and close the sheet on success.
+  - [x] 4.3 Ensure deletion is permanent (no undo/soft delete).
+  - [x] 4.4 Add unit tests for the delete flow, dialog, and sheet closing behavior.
 
 - [ ] 5.0 Handle Edge Cases: Unsaved Changes, Concurrent Editing, and Error Alerts
   - [ ] 5.1 Show a warning/confirmation dialog if the user tries to leave edit mode with unsaved changes.

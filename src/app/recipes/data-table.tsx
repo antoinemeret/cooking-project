@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTitle, SheetClose } from '@/components/ui/sheet'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from "sonner"
 import { detectVideoUrl, getPlatformDisplayName } from "@/lib/video-url-detector"
 import { VideoProgressTracker, VideoProcessingProgress, VideoProcessingStage } from "@/components/recipes/VideoProgressTracker"
@@ -79,7 +80,12 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
   const [editFields, setEditFields] = useState<{ title: string; rawIngredients: string; instructions: string }>({ title: '', rawIngredients: '', instructions: '' })
   const [tagUpdateError, setTagUpdateError] = useState<string | null>(null)
   const [isUpdatingTags, setIsUpdatingTags] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const openReviewDialog = (recipe: ImportedRecipe) => {
     setImportedRecipe(recipe)
@@ -376,6 +382,81 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
     }
   }
 
+  const handleSave = async () => {
+    if (!selectedRecipe) return
+
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      // Prepare the data to send
+      const updateData = {
+        title: editFields.title,
+        rawIngredients: editFields.rawIngredients.split('\n').filter(line => line.trim()),
+        instructions: editFields.instructions
+      }
+
+      // Call the API to update the recipe
+      const response = await fetch(`/api/recipes/${selectedRecipe.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || 'Failed to save recipe'
+        throw new Error(errorMessage)
+      }
+
+      const { recipe: updatedRecipe } = await response.json()
+
+      // Optimistically update the selected recipe
+      setSelectedRecipe(updatedRecipe)
+
+      // Exit edit mode
+      setIsEditMode(false)
+
+      // Refresh the recipes list to show updated data
+      onRefresh()
+
+      // Show success feedback
+      toast.success('Changes saved')
+
+    } catch (error) {
+      console.error('Error saving recipe:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save recipe. Please try again.'
+      setSaveError(errorMessage)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!selectedRecipe) return
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      const response = await fetch(`/api/recipes/${selectedRecipe.id}`, {
+        method: 'DELETE'
+      })
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || 'Failed to delete recipe'
+        throw new Error(errorMessage)
+      }
+      setIsDeleteDialogOpen(false)
+      setSelectedRecipe(null)
+      onRefresh()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete recipe'
+      setDeleteError(errorMessage)
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   const table = useReactTable({
     data: recipes,
     columns,
@@ -605,6 +686,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                     aria-label="Edit Recipe"
                     onClick={() => {
                       setIsEditMode(true)
+                      setSaveError(null)
                       setEditFields({
                         title: selectedRecipe?.title || '',
                         rawIngredients: selectedRecipe?.rawIngredients ? JSON.parse(selectedRecipe.rawIngredients).join('\n') : '',
@@ -625,7 +707,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                     variant="ghost"
                     size="sm"
                     aria-label="Delete Recipe"
-                    onClick={() => console.log('Delete clicked')}
+                    onClick={() => setIsDeleteDialogOpen(true)}
                     disabled={isEditMode}
                     className="flex items-center gap-1"
                   >
@@ -671,10 +753,21 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                       placeholder="Enter cooking instructions"
                     />
                   </div>
+                  {/* Error Alert */}
+                  {saveError && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{saveError}</AlertDescription>
+                    </Alert>
+                  )}
                   {/* Footer with full-width Save button */}
                   <div className="mt-6 flex justify-end border-t pt-4">
-                    <Button variant="default" className="w-full" onClick={() => {/* save logic here */}}>
-                      Save
+                    <Button 
+                      variant="default" 
+                      className="w-full" 
+                      onClick={handleSave}
+                      disabled={isSaving}
+                    >
+                      {isSaving ? 'Saving...' : 'Save'}
                     </Button>
                   </div>
                 </>
@@ -705,6 +798,28 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
               )}
             </div>
           </SheetContent>
+          {/* Delete Confirmation Dialog */}
+          <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete Recipe</DialogTitle>
+              </DialogHeader>
+              <div className="py-2">Are you sure you want to delete this recipe? This action cannot be undone.</div>
+              {deleteError && (
+                <Alert variant="destructive" className="mb-2">
+                  <AlertDescription>{deleteError}</AlertDescription>
+                </Alert>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeleting}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </Sheet>
       )}
     </div>
