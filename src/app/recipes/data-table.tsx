@@ -86,6 +86,8 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [isUnsavedChangesDialogOpen, setIsUnsavedChangesDialogOpen] = useState(false)
 
   const openReviewDialog = (recipe: ImportedRecipe) => {
     setImportedRecipe(recipe)
@@ -433,6 +435,30 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
     }
   }
 
+  const checkForUnsavedChanges = () => {
+    if (!selectedRecipe) return false
+    
+    const originalTitle = selectedRecipe.title
+    const originalIngredients = selectedRecipe.rawIngredients ? JSON.parse(selectedRecipe.rawIngredients).join('\n') : ''
+    const originalInstructions = selectedRecipe.instructions || ''
+    
+    return editFields.title !== originalTitle ||
+           editFields.rawIngredients !== originalIngredients ||
+           editFields.instructions !== originalInstructions
+  }
+
+
+
+  const handleExitEditMode = () => {
+    const hasChanges = checkForUnsavedChanges()
+    if (hasChanges) {
+      setIsUnsavedChangesDialogOpen(true)
+    } else {
+      setIsEditMode(false)
+      setEditFields({ title: '', rawIngredients: '', instructions: '' })
+    }
+  }
+
   const handleDelete = async () => {
     if (!selectedRecipe) return
     setIsDeleting(true)
@@ -658,7 +684,16 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       {/* Render a single Sheet for the selected recipe */}
       {selectedRecipe && (
         <Sheet open={selectedRecipe !== null} onOpenChange={(open) => {
-          if (!open) setSelectedRecipe(null)
+          if (!open) {
+            // Check for unsaved changes before closing
+            if (isEditMode && checkForUnsavedChanges()) {
+              setIsUnsavedChangesDialogOpen(true)
+            } else {
+              setSelectedRecipe(null)
+              setIsEditMode(false)
+              setEditFields({ title: '', rawIngredients: '', instructions: '' })
+            }
+          }
         }}>
           <SheetContent className="w-[50%] min-w-[320px] p-6 flex flex-col gap-6" showCloseButton={!isEditMode}>
             <SheetTitle className="sr-only">{selectedRecipe?.title || 'Recipe Details'}</SheetTitle>
@@ -671,7 +706,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                 variant="ghost"
                 size="icon"
                 aria-label="Close Edit Mode"
-                onClick={() => setIsEditMode(false)}
+                onClick={handleExitEditMode}
                 className="absolute top-4 right-4 z-50"
               >
                 <XIcon className="w-5 h-5" />
@@ -687,6 +722,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                     onClick={() => {
                       setIsEditMode(true)
                       setSaveError(null)
+                      setHasUnsavedChanges(false)
                       setEditFields({
                         title: selectedRecipe?.title || '',
                         rawIngredients: selectedRecipe?.rawIngredients ? JSON.parse(selectedRecipe.rawIngredients).join('\n') : '',
@@ -720,6 +756,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                 )}
               </div>
             </div>
+
             <div className="flex flex-col gap-4">
               {isEditMode ? (
                 <>
@@ -816,6 +853,28 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                 </Button>
                 <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
                   {isDeleting ? 'Deleting...' : 'Delete'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          {/* Unsaved Changes Dialog */}
+          <Dialog open={isUnsavedChangesDialogOpen} onOpenChange={setIsUnsavedChangesDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Unsaved Changes</DialogTitle>
+              </DialogHeader>
+              <div className="py-2">You have unsaved changes. Are you sure you want to discard them?</div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsUnsavedChangesDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={() => {
+                  setIsEditMode(false)
+                  setSelectedRecipe(null)
+                  setEditFields({ title: '', rawIngredients: '', instructions: '' })
+                  setIsUnsavedChangesDialogOpen(false)
+                }}>
+                  Discard Changes
                 </Button>
               </DialogFooter>
             </DialogContent>
