@@ -61,7 +61,7 @@
   - [x] 4.4 Add unit tests for the delete flow, dialog, and sheet closing behavior.
 
 - [ ] 5.0 Handle Edge Cases: Unsaved Changes, Concurrent Editing, and Error Alerts
-  - [ ] 5.1 Show a warning/confirmation dialog if the user tries to leave edit mode with unsaved changes.
+  - [x] 5.1 Show a warning/confirmation dialog if the user tries to leave edit mode with unsaved changes.
   - [ ] 5.2 If a second user tries to edit the same recipe, show an alert (shadcn Alert) indicating the recipe is being edited by someone else.
   - [ ] 5.3 Ensure no metadata or system tags are shown in the tag list.
   - [ ] 5.4 Add unit tests for all edge cases and error alerts. 

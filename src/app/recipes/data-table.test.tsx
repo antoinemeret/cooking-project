@@ -619,3 +619,114 @@ describe('Recipe Delete Flow (Task 4.4)', () => {
     resolveDelete({ ok: true, json: () => Promise.resolve({ success: true }) })
   })
 }) 
+
+describe('Planner Add Button and Toast Feedback', () => {
+  const mockRecipe = {
+    id: 42,
+    title: 'Planner Test Recipe',
+    summary: 'Test summary',
+    instructions: 'Test instructions',
+    rawIngredients: '[]',
+    tags: '[]',
+    startSeason: 1,
+    endSeason: 12,
+    grade: 2,
+    time: 10,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ingredients: []
+  }
+  const mockOnRefresh = jest.fn()
+  let toastSpy: jest.SpyInstance
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mockFetch.mockClear()
+    // Patch toast to be a jest.fn()
+    jest.resetModules()
+    const sonner = require('sonner')
+    sonner.toast = jest.fn()
+    toastSpy = jest.spyOn(sonner, 'toast')
+  })
+
+  it('shows enabled Add to planner button if not in planner', async () => {
+    // Mock meal plan fetch: recipe not in planner
+    mockFetch.mockImplementation((url) => {
+      if (url.startsWith('/api/planner?')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ mealPlan: { plannedRecipes: [] } })
+        })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+    render(<DataTable recipes={[mockRecipe]} onRefresh={mockOnRefresh} loading={false} />)
+    // Open sheet
+    const recipeTitle = screen.getByText('Planner Test Recipe')
+    fireEvent.click(recipeTitle)
+    // Wait for Add to planner button
+    const addBtn = await screen.findByLabelText('Add to planner')
+    expect(addBtn).toBeEnabled()
+    expect(addBtn).toHaveTextContent('Add to planner')
+  })
+
+  it('shows disabled In planner button if already in planner', async () => {
+    // Mock meal plan fetch: recipe is in planner
+    mockFetch.mockImplementation((url) => {
+      if (url.startsWith('/api/planner?')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ mealPlan: { plannedRecipes: [{ recipeId: 42 }] } })
+        })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+    render(<DataTable recipes={[mockRecipe]} onRefresh={mockOnRefresh} loading={false} />)
+    // Open sheet
+    const recipeTitle = screen.getByText('Planner Test Recipe')
+    fireEvent.click(recipeTitle)
+    // Wait for In planner button
+    const inPlannerBtn = await screen.findByLabelText('In planner')
+    expect(inPlannerBtn).toBeDisabled()
+    expect(inPlannerBtn).toHaveTextContent('In planner')
+  })
+
+  it('calls API and shows toast with check icon when adding to planner', async () => {
+    // Mock meal plan fetch: not in planner, then after add
+    let planned = false
+    mockFetch.mockImplementation((url, opts) => {
+      if (url.startsWith('/api/planner?')) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ mealPlan: { plannedRecipes: planned ? [{ recipeId: 42 }] : [] } })
+        })
+      }
+      if (url === '/api/planner' && opts?.method === 'POST') {
+        planned = true
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+    render(<DataTable recipes={[mockRecipe]} onRefresh={mockOnRefresh} loading={false} />)
+    // Open sheet
+    const recipeTitle = screen.getByText('Planner Test Recipe')
+    fireEvent.click(recipeTitle)
+    // Click Add to planner
+    const addBtn = await screen.findByLabelText('Add to planner')
+    fireEvent.click(addBtn)
+    // Wait for toast to be called with check icon
+    await waitFor(() => {
+      expect(toastSpy).toHaveBeenCalled()
+      const toastArg = toastSpy.mock.calls[0][0]
+      // Should be a React element with CheckCircle2 and text
+      if (typeof toastArg === 'object' && toastArg.props) {
+        expect(toastArg.props.children.some((child: any) => child && child.type && child.type.name === 'CheckCircle2')).toBe(true)
+        expect(toastArg.props.children.some((child: any) => typeof child === 'string' && child.includes('Recipe added to planner'))).toBe(true)
+      }
+    })
+    // Button should now be disabled and say In planner
+    const inPlannerBtn = await screen.findByLabelText('In planner')
+    expect(inPlannerBtn).toBeDisabled()
+    expect(inPlannerBtn).toHaveTextContent('In planner')
+  })
+}) 
