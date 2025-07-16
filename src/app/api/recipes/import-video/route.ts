@@ -5,6 +5,7 @@ import * as path from 'path'
 import { withTempSession } from '@/lib/temp-file-manager'
 import { validateVideoUrl, getPlatformDisplayName } from '@/lib/video-url-validator'
 import { getRecipeTagSuggestions } from '@/lib/ai-client'
+import fetch from 'node-fetch'
 
 import { 
   createProgressResponse, 
@@ -398,6 +399,51 @@ async function extractVideoMetadata(videoUrl: string): Promise<{ title?: string;
 }
 
 export async function POST(req: NextRequest) {
+  const body = await req.json()
+  const { url, recipeId, extractThumbnail } = body
+
+  // Instagram thumbnail extraction branch
+  if (extractThumbnail && url && recipeId && url.includes('instagram.com')) {
+    // 1. Fetch the Instagram page
+    const res = await fetch(url)
+    if (!res.ok) {
+      return new Response(JSON.stringify({ error: 'Failed to fetch Instagram page' }), { status: 400 })
+    }
+    const html = await res.text()
+    // 2. Parse og:image meta tag
+    const match = html.match(/<meta property="og:image" content="([^"]+)"/)
+    if (!match) {
+      return new Response(JSON.stringify({ error: 'Could not find thumbnail in Instagram page' }), { status: 400 })
+    }
+    const imageUrl = match[1]
+    // 3. Download the image
+    const imageRes = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RecipeBot/1.0; +https://yourdomain.com)',
+        'Referer': url
+      }
+    })
+    if (!imageRes.ok) {
+      // Return the thumbnail URL so the frontend can use it for manual upload
+      return new Response(JSON.stringify({ error: 'Failed to download thumbnail image', thumbnailUrl: imageUrl }), { status: 400 })
+    }
+    const buffer = Buffer.from(await imageRes.arrayBuffer())
+    // 4. Save to uploads dir
+    const ext = imageUrl.split('.').pop()?.split('?')[0] || 'jpg'
+    const filename = `recipe-${recipeId}-instagram-thumb-${Date.now()}.${ext}`
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'recipes')
+    await fs.mkdir(uploadDir, { recursive: true })
+    const filePath = path.join(uploadDir, filename)
+    await fs.writeFile(filePath, buffer)
+    const publicUrl = `/uploads/recipes/${filename}`
+    // 5. Update recipe
+    const recipe = await prisma.recipe.update({
+      where: { id: Number(recipeId) },
+      data: { image: publicUrl }
+    })
+    return new Response(JSON.stringify(recipe), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+
   try {
     const body = await req.json()
     
