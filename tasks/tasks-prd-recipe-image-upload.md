@@ -53,7 +53,7 @@
   - [x] 4.2 Display a square thumbnail in recipe cards (assistant, planner, recipe list).
   - [x] 4.3 Use a visually appealing placeholder if no image is present.
   - [x] 4.4 Ensure images are responsive and accessible.
-- [ ] 5.0 Add Placeholders, Error Handling, and User Feedback
-  - [ ] 5.1 Add placeholder image(s) to `public/` and reference in UI.
-  - [ ] 5.2 Show user-friendly error messages for failed uploads or imports.
-  - [ ] 5.3 Add tests for all new logic and UI (API, components, error cases). 
+- [x] 5.0 Add Placeholders, Error Handling, and User Feedback
+  - [x] 5.1 Add placeholder image(s) to `public/` and reference in UI.
+  - [x] 5.2 Show user-friendly error messages for failed uploads or imports.
+  - [x] 5.3 Add tests for all new logic and UI (API, components, error cases). 

@@ -29,7 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTitle, SheetClose } from '@/components/ui/sheet'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
 import { detectVideoUrl, getPlatformDisplayName } from "@/lib/video-url-detector"
@@ -588,26 +588,47 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
   // Render the Import from URL dialog
   const renderUrlInputDialog = () => (
     <Dialog open={isUrlInputDialogOpen} onOpenChange={setIsUrlInputDialogOpen}>
-      <DialogContent className="max-w-md w-full">
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Import Recipe from URL or Video</DialogTitle>
+          <DialogDescription>
+            Paste a recipe URL or video link to automatically extract the recipe content.
+          </DialogDescription>
         </DialogHeader>
-        <div className="mb-4">
+        <div className="space-y-4 pt-4">
           <Input
             type="text"
             placeholder="Paste recipe URL or video link..."
             value={importUrl}
             onChange={e => setImportUrl(e.target.value)}
             disabled={isImporting}
-            className="w-full"
           />
-        </div>
-        {importError && <div className="text-sm text-destructive mb-2">{importError}</div>}
-        <DialogFooter>
+          
+          {/* Video Progress Tracker - shown when video is processing */}
+          {isVideoProcessing && videoProgress && (
+            <VideoProgressTracker 
+              progress={videoProgress}
+            />
+          )}
+          
+          {/* Import Status for non-video URLs */}
+          {isImporting && !isVideoProcessing && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-blue-800">{importStatus}</span>
+              </div>
+            </div>
+          )}
+          
+          {importError && (
+            <div className="text-sm text-destructive">{importError}</div>
+          )}
+          
           <Button onClick={handleUrlImport} disabled={isImporting || !importUrl} className="w-full">
             {isImporting ? 'Importing...' : 'Import'}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   )
@@ -646,14 +667,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
             onRefresh={onRefresh}
           />
           
-          {/* Compact Video Progress Tracker - shown when dialog is closed and video is processing */}
-          {isVideoProcessing && videoProgress && !isImportDialogOpen && (
-            <div className="flex-1 max-w-md">
-              <VideoProgressTracker 
-                progress={videoProgress}
-              />
-            </div>
-          )}
+          {/* Video Progress Tracker is now handled inside the ImportRecipeDialog */}
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -1323,72 +1337,102 @@ function ImportRecipeDialog({
 // RETURN your dialog JSX here!
 return (
   <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="max-w-md w-full">
+    <DialogContent className="sm:max-w-[425px]">
       <DialogHeader>
         <DialogTitle>{isManualMode ? 'Create Recipe' : 'Review Recipe'}</DialogTitle>
+        <DialogDescription>
+          {isManualMode 
+            ? 'Fill in the recipe details below and click save when you\'re done.'
+            : 'Review and edit the imported recipe details before saving.'
+          }
+        </DialogDescription>
       </DialogHeader>
-      {/* Editable fields for title, ingredients, instructions */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium mb-1">Title</label>
-        <input
-          className="w-full p-2 border rounded mb-2"
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          placeholder="Recipe title"
-        />
-        <label className="block text-sm font-medium mb-1">Ingredients</label>
-        <textarea
-          className="w-full p-2 border rounded mb-2"
-          rows={4}
-          value={ingredients}
-          onChange={e => setIngredients(e.target.value)}
-          placeholder="One ingredient per line"
-        />
-        <label className="block text-sm font-medium mb-1">Instructions</label>
-        <textarea
-          className="w-full p-2 border rounded"
-          rows={6}
-          value={instructions}
-          onChange={e => setInstructions(e.target.value)}
-          placeholder="Cooking instructions"
-        />
-      </div>
-      {/* --- Image Section: everything below instructions --- */}
-      <div className="mb-4">
-        {/* Image Carousel Picker */}
-        {candidateImages.length > 0 && (
-          <div className="flex overflow-x-auto gap-4 pb-2 mb-2">
-            {candidateImages.map((img, idx) => (
-              <div
-                key={img}
-                className={`relative flex-shrink-0 w-32 h-32 rounded-lg border-2 cursor-pointer transition-all ${selectedImageIdx === idx && !uploadedImage ? 'border-blue-500' : 'border-transparent'}`}
-                onClick={() => handleImageSelect(idx)}
-                tabIndex={0}
-                aria-label={`Select image ${idx + 1}`}
-              >
-                <img src={img} alt={`Candidate ${idx + 1}`} className="object-cover w-full h-full rounded-lg" />
-                {selectedImageIdx === idx && !uploadedImage && (
-                  <CheckCircle2 className="absolute top-1 left-1 w-6 h-6 text-blue-500 bg-white rounded-full shadow" />
-                )}
-              </div>
-            ))}
-          </div>
+      
+      <div className="grid gap-4 pt-4">
+        {/* Video Progress Tracker - shown when video is processing */}
+        {isVideoProcessing && videoProgress && (
+          <VideoProgressTracker 
+            progress={videoProgress}
+          />
         )}
-        {/* Selected Image Preview */}
-        <div className="mb-2">
-          <div className="text-sm font-medium mb-1">Selected Image Preview</div>
-          <div className="w-full h-40 rounded-lg overflow-hidden border">
-            {uploadedPreview ? (
-              <img src={uploadedPreview} alt="Selected preview" className="object-cover w-full h-full" />
-            ) : candidateImages[selectedImageIdx] ? (
-              <img src={candidateImages[selectedImageIdx]} alt="Selected preview" className="object-cover w-full h-full" />
-            ) : (
-              <div className="flex items-center justify-center h-full text-muted-foreground">No image selected</div>
-            )}
+        
+        {/* Editable fields for title, ingredients, instructions */}
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <label className="text-sm font-medium">Title</label>
+            <input
+              className="w-full p-2 border rounded"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Recipe title"
+            />
+          </div>
+          <div className="grid gap-2">
+            <label className="text-sm font-medium">Ingredients</label>
+            <textarea
+              className="w-full p-2 border rounded"
+              rows={4}
+              value={ingredients}
+              onChange={e => setIngredients(e.target.value)}
+              placeholder="One ingredient per line"
+            />
+          </div>
+          <div className="grid gap-2">
+            <label className="text-sm font-medium">Instructions</label>
+            <textarea
+              className="w-full p-2 border rounded"
+              rows={6}
+              value={instructions}
+              onChange={e => setInstructions(e.target.value)}
+              placeholder="Cooking instructions"
+            />
           </div>
         </div>
-        {/* Upload button below preview */}
-        <div className="mt-2 flex flex-col items-center gap-2">
+        
+        {/* Image Section */}
+        {(candidateImages.length > 0 || uploadedPreview) && (
+          <div className="grid gap-4">
+            {/* Image Carousel Picker */}
+            {candidateImages.length > 0 && (
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Choose an image</label>
+                <div className="flex overflow-x-auto gap-4 pb-2">
+                  {candidateImages.map((img, idx) => (
+                    <div
+                      key={img}
+                      className={`relative flex-shrink-0 w-32 h-32 rounded-lg border-2 cursor-pointer transition-all ${selectedImageIdx === idx && !uploadedImage ? 'border-blue-500' : 'border-transparent'}`}
+                      onClick={() => handleImageSelect(idx)}
+                      tabIndex={0}
+                      aria-label={`Select image ${idx + 1}`}
+                    >
+                      <img src={img} alt={`Candidate ${idx + 1}`} className="object-cover w-full h-full rounded-lg" />
+                      {selectedImageIdx === idx && !uploadedImage && (
+                        <CheckCircle2 className="absolute top-1 left-1 w-6 h-6 text-blue-500 bg-white rounded-full shadow" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Selected Image Preview */}
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Selected Image Preview</label>
+              <div className="w-full h-40 rounded-lg overflow-hidden border">
+                {uploadedPreview ? (
+                  <img src={uploadedPreview} alt="Selected preview" className="object-cover w-full h-full" />
+                ) : candidateImages[selectedImageIdx] ? (
+                  <img src={candidateImages[selectedImageIdx]} alt="Selected preview" className="object-cover w-full h-full" />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">No image selected</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Upload button */}
+        <div className="flex flex-col items-center gap-2">
           <label className="inline-flex items-center gap-2 cursor-pointer text-blue-600 hover:underline">
             <Upload className="w-5 h-5" />
             <span>Upload your own image</span>
@@ -1401,46 +1445,47 @@ return (
             </div>
           )}
         </div>
-      </div>
-      {/* --- Tag Section: below image section --- */}
-      <div className="mb-4">
-        {recipe?.suggestedTags && recipe.suggestedTags.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2">
-            {recipe.suggestedTags.map(tag => (
-              <button
-                key={tag}
-                type="button"
-                className={`px-2 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200 text-xs hover:bg-blue-100 ${tags.includes(tag) ? 'opacity-50 cursor-not-allowed' : ''}`}
-                onClick={() => handleAddSuggestedTag(tag)}
-                disabled={tags.includes(tag)}
-              >
-                + {tag}
-              </button>
-            ))}
-          </div>
-        )}
-        <TagInput
-          tags={tags}
-          onTagsChange={setTags}
-          placeholder="Add tags like 'vegan', 'quick', 'dinner'..."
-          getSuggestions={async (query: string) => {
-            try {
-              const response = await fetch(`/api/tags?query=${encodeURIComponent(query)}`)
-              if (response.ok) {
-                const data = await response.json()
-                return data.suggestions || []
+        
+        {/* Tag Section */}
+        <div className="grid gap-2">
+          <label className="text-sm font-medium">Tags</label>
+          {recipe?.suggestedTags && recipe.suggestedTags.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <div className="text-xs text-muted-foreground w-full">Suggested:</div>
+              {recipe.suggestedTags.map(tag => (
+                <button
+                  key={tag}
+                  type="button"
+                  className={`px-2 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200 text-xs hover:bg-blue-100 ${tags.includes(tag) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  onClick={() => handleAddSuggestedTag(tag)}
+                  disabled={tags.includes(tag)}
+                >
+                  + {tag}
+                </button>
+              ))}
+            </div>
+          )}
+          <TagInput
+            tags={tags}
+            onTagsChange={setTags}
+            placeholder="Add tags like 'vegan', 'quick', 'dinner'..."
+            getSuggestions={async (query: string) => {
+              try {
+                const response = await fetch(`/api/tags?query=${encodeURIComponent(query)}`)
+                if (response.ok) {
+                  const data = await response.json()
+                  return data.suggestions || []
+                }
+              } catch (error) {
+                console.warn('Failed to fetch tag suggestions:', error)
               }
-            } catch (error) {
-              console.warn('Failed to fetch tag suggestions:', error)
-            }
-            return []
-          }}
-        />
+              return []
+            }}
+          />
+        </div>
       </div>
-      {/* Save button */}
-      <div className="flex justify-end mt-4">
-        <Button onClick={handleSave} className="w-full">Save</Button>
-      </div>
+      
+      <Button onClick={handleSave} className="w-full">Save</Button>
     </DialogContent>
   </Dialog>
 )
