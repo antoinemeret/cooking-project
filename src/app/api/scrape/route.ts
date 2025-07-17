@@ -131,6 +131,32 @@ export async function POST(req: NextRequest) {
     }
 
     const html = await htmlRes.text()
+    // --- Extract candidate images ---
+    const $ = cheerio.load(html)
+    const images: string[] = []
+    // 1. og:image
+    const ogImage = $('meta[property="og:image"]').attr('content')
+    if (ogImage) images.push(ogImage)
+    // 2. Prominent <img> tags (header, hero, first in article)
+    $('img').each((i, el) => {
+      if (images.length >= 3) return false
+      const src = $(el).attr('src')
+      if (src && !images.includes(src)) {
+        // Make absolute if needed
+        let abs = src
+        if (src.startsWith('//')) abs = 'https:' + src
+        else if (src.startsWith('/')) {
+          const u = new URL(url)
+          abs = u.origin + src
+        } else if (!src.startsWith('http')) {
+          const u = new URL(url)
+          abs = u.origin + '/' + src
+        }
+        images.push(abs)
+      }
+    })
+    // Only keep top 3
+    const topImages = images.slice(0, 3)
     
     // Try traditional parser first
     console.log('Attempting traditional parsing first...')
@@ -164,7 +190,7 @@ export async function POST(req: NextRequest) {
       }
       
       console.log('API response (traditional):', recipe)
-      return NextResponse.json({ recipe })
+      return NextResponse.json({ recipe, images: topImages })
     }
     
     // Fall back to LLM if traditional parsing failed or returned insufficient data
@@ -189,7 +215,7 @@ export async function POST(req: NextRequest) {
     }
     
     console.log('API response (LLM fallback):', recipe)
-    return NextResponse.json({ recipe })
+    return NextResponse.json({ recipe, images: topImages })
     
   } catch (err) {
     console.error('API /api/scrape error:', err)

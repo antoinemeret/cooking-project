@@ -36,20 +36,20 @@
   - [x] 1.2 Create and run a migration to update the database.
   - [x] 1.3 Decide on and set up an initial image storage solution (local filesystem or simple cloud storage).
   - [x] 1.4 Update Prisma client and types as needed.
-- [ ] 2.0 Implement Image Upload, Import, and Optimization Logic
+- [x] 2.0 Implement Image Upload, Import, and Optimization Logic
   - [x] 2.1 Implement API endpoint for manual image upload (`import-photo`).
   - [x] 2.2 Implement API logic for extracting and saving video thumbnails.
   - [x] 2.3 Add image validation (JPEG, PNG, WebP, max 5MB).
   - [x] 2.4 Add image optimization (resize, compress, convert to WebP if possible).
   - [x] 2.5 Store image metadata or URL in the recipe record.
-- [ ] 3.0 Integrate Image Selection and Review in Recipe Import/Create/Edit Flows
-  - [ ] 3.1 Update import-from-URL flow to allow user to pick a frame or detected image.
-  - [ ] 3.2 Update import-from-video flow to use default platform thumbnail.
-  - [ ] 3.3 Update manual and edit flows to allow image upload, replacement, or removal.
-  - [ ] 3.4 Show the image (or placeholder) in the review dialog before saving.
-  - [ ] 3.5 Display a message in the review dialog if image import fails.
+- [x] 3.0 Integrate Image Selection and Review in Recipe Import/Create/Edit Flows
+  - [x] 3.1 Update import-from-URL flow to allow user to pick a frame or detected image.
+  - [x] 3.2 Update import-from-video flow to use default platform thumbnail.
+  - [x] 3.3 Update manual and edit flows to allow image upload, replacement, or removal.
+  - [x] 3.4 Show the image (or placeholder) in the review dialog before saving.
+  - [x] 3.5 Display a message in the review dialog if image import fails.
 - [ ] 4.0 Display Images in Recipe Sheet and Recipe Cards
-  - [ ] 4.1 Display the hero image (full width) at the top of the recipe sheet.
+  - [ ] 4.1 Display the hero image (full width at the top of the recipe sheet on mobile / square image placed next a grouped title + actions on desktop).
   - [ ] 4.2 Display a square thumbnail in recipe cards (assistant, planner, recipe list).
   - [ ] 4.3 Use a visually appealing placeholder if no image is present.
   - [ ] 4.4 Ensure images are responsive and accessible.

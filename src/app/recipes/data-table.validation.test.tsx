@@ -1,5 +1,6 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { DataTable } from './data-table'
 
 // Mock the TagInput component
@@ -93,13 +94,14 @@ describe('DataTable Tag Validation and Error Handling', () => {
   })
 
   it('validates tag input in manual recipe creation', async () => {
+    const user = userEvent.setup()
     render(<DataTable recipes={mockRecipes} onRefresh={mockOnRefresh} loading={false} />)
     
     // Open manual creation dialog
     const addButton = screen.getByText('Add new')
-    fireEvent.click(addButton)
-    const createManually = screen.getByText('Create manually')
-    fireEvent.click(createManually)
+    await user.click(addButton)
+    const createManually = await screen.findByText('Create manually')
+    await user.click(createManually)
     
     // Check that TagInput is rendered with validation
     await waitFor(() => {

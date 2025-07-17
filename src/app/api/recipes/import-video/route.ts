@@ -398,8 +398,271 @@ async function extractVideoMetadata(videoUrl: string): Promise<{ title?: string;
   return {}
 }
 
+// Helper: Extract default thumbnail URL for supported platforms
+async function getDefaultThumbnailUrl(videoUrl: string, platform: string): Promise<string | null> {
+  if (platform === 'youtube') {
+    // Extract video ID from URL
+    const match = videoUrl.match(/[?&]v=([\w-]+)/) || videoUrl.match(/youtu\.be\/([\w-]+)/) || videoUrl.match(/shorts\/([\w-]+)/)
+    const videoId = match ? match[1] : null
+    if (videoId) {
+      // Standard YouTube thumbnail URL
+      return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+    }
+  } else if (platform === 'tiktok') {
+    // TikTok: Try multiple approaches with different user agents
+    console.log('🔍 TikTok: Attempting to fetch thumbnail from:', videoUrl)
+    
+    const tiktokApproaches: Array<{ headers: Record<string, string>; name: string }> = [
+      // Approach 1: Mobile Safari (iOS)
+      {
+        name: 'Mobile Safari',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
+        }
+      },
+      // Approach 2: Android Chrome
+      {
+        name: 'Android Chrome',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
+        }
+      },
+      // Approach 3: Facebook crawler
+      {
+        name: 'Facebook Crawler',
+        headers: {
+          'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      },
+      // Approach 4: Twitter crawler
+      {
+        name: 'Twitter Crawler',
+        headers: {
+          'User-Agent': 'Twitterbot/1.0',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      }
+    ]
+
+    for (const approach of tiktokApproaches) {
+      try {
+        console.log(`🔍 TikTok: Trying ${approach.name} approach...`)
+        const res = await fetch(videoUrl, { headers: approach.headers })
+        console.log(`🔍 TikTok ${approach.name} response:`, res.status, res.statusText)
+        
+                 if (res.ok) {
+          const html = await res.text()
+          console.log(`🔍 TikTok ${approach.name} HTML length:`, html.length)
+          
+          // Strategy 1: Look for clean video cover/poster images first
+          const cleanImagePatterns = [
+            // Video poster/cover images (usually clean without play button)
+            /"poster":\s*"([^"]+)"/,
+            /"cover":\s*"([^"]+)"/,
+            /"videoUrl":\s*"([^"]+)".*?"poster":\s*"([^"]+)"/,
+            // Dynamic video thumbnails in JSON-LD or script tags
+            /"dynamicCover":\s*"([^"]+)"/,
+            /"originCover":\s*"([^"]+)"/,
+            // Alternative image sources
+            /"video":\s*{[^}]*"cover":\s*"([^"]+)"/,
+            /"itemStruct":\s*{[^}]*"video":\s*{[^}]*"cover":\s*"([^"]+)"/
+          ]
+          
+                     for (const pattern of cleanImagePatterns) {
+             const match = html.match(pattern)
+             if (match) {
+               // Get the last capture group (the actual URL)
+               let imageUrl = match[match.length - 1]
+               if (imageUrl) {
+                 // Unescape Unicode characters (e.g., \u002F -> /)
+                 imageUrl = imageUrl.replace(/\\u002F/g, '/')
+                 imageUrl = imageUrl.replace(/\\u003A/g, ':')
+                 imageUrl = imageUrl.replace(/\\u003D/g, '=')
+                 imageUrl = imageUrl.replace(/\\u0026/g, '&')
+                 imageUrl = imageUrl.replace(/\\u003F/g, '?')
+                 
+                 if (imageUrl.startsWith('http')) {
+                   console.log(`✅ TikTok clean thumbnail found via pattern (${approach.name}):`, imageUrl)
+                   return imageUrl
+                 }
+               }
+             }
+           }
+          
+                     // Strategy 2: Try og:image but filter out ones with play button indicators
+           const ogMatch = html.match(/<meta property="og:image" content="([^"]+)"/)
+           if (ogMatch) {
+             let ogImageUrl = ogMatch[1]
+             // Unescape Unicode characters
+             ogImageUrl = ogImageUrl.replace(/\\u002F/g, '/')
+             ogImageUrl = ogImageUrl.replace(/\\u003A/g, ':')
+             ogImageUrl = ogImageUrl.replace(/\\u003D/g, '=')
+             ogImageUrl = ogImageUrl.replace(/\\u0026/g, '&')
+             ogImageUrl = ogImageUrl.replace(/\\u003F/g, '?')
+             
+             // Skip if URL suggests it's a play button overlay image
+             if (!ogImageUrl.includes('play') && !ogImageUrl.includes('overlay') && !ogImageUrl.includes('thumb-play')) {
+               console.log(`✅ TikTok thumbnail found via og:image (${approach.name}):`, ogImageUrl)
+               return ogImageUrl
+             } else {
+               console.log(`⚠️ TikTok og:image appears to have play button overlay, skipping:`, ogImageUrl)
+             }
+           }
+           
+           // Strategy 3: Try twitter:image as fallback
+           const twitterMatch = html.match(/<meta name="twitter:image" content="([^"]+)"/)
+           if (twitterMatch) {
+             let twitterImageUrl = twitterMatch[1]
+             // Unescape Unicode characters
+             twitterImageUrl = twitterImageUrl.replace(/\\u002F/g, '/')
+             twitterImageUrl = twitterImageUrl.replace(/\\u003A/g, ':')
+             twitterImageUrl = twitterImageUrl.replace(/\\u003D/g, '=')
+             twitterImageUrl = twitterImageUrl.replace(/\\u0026/g, '&')
+             twitterImageUrl = twitterImageUrl.replace(/\\u003F/g, '?')
+             
+             console.log(`✅ TikTok thumbnail found via twitter:image (${approach.name}):`, twitterImageUrl)
+             return twitterImageUrl
+           }
+          
+          console.log(`❌ TikTok ${approach.name}: No clean image sources found`)
+        } else {
+          console.log(`❌ TikTok ${approach.name} fetch failed:`, res.status, res.statusText)
+        }
+      } catch (err) { 
+        console.log(`❌ TikTok ${approach.name} error:`, err)
+      }
+    }
+      } else if (platform === 'instagram') {
+    // Instagram: Advanced multi-strategy approach
+    console.log('🔍 Instagram: Attempting advanced thumbnail extraction from:', videoUrl)
+    
+        // Note: Instagram has become very restrictive with external access
+    // We'll focus on basic page scraping and accept that thumbnails may have play button overlays
+    console.log('ℹ️ Instagram restricts external access - attempting basic scraping only')
+    
+    // Strategy 1: Enhanced traditional scraping with more user agents
+    const approaches: Array<{ headers: Record<string, string>; name: string }> = [
+      // Approach 1: Instagram mobile app user agent
+      {
+        name: 'Instagram Mobile App',
+        headers: {
+          'User-Agent': 'Instagram 219.0.0.12.117 Android',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5'
+        }
+      },
+      // Approach 2: WhatsApp user agent (Meta-owned)
+      {
+        name: 'WhatsApp',
+        headers: {
+          'User-Agent': 'WhatsApp/2.21.4.18 A',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      },
+      // Approach 3: Old iOS Safari
+      {
+        name: 'Old iOS Safari',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 12_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0 Mobile/15E148 Safari/604.1',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5'
+        }
+      },
+      // Approach 4: LinkedIn crawler
+      {
+        name: 'LinkedIn',
+        headers: {
+          'User-Agent': 'LinkedInBot/1.0 (compatible; Mozilla/5.0; +https://www.linkedin.com/)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      },
+      // Approach 5: Pinterest crawler
+      {
+        name: 'Pinterest',
+        headers: {
+          'User-Agent': 'Pinterest/0.2 (+https://www.pinterest.com/)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      }
+    ]
+
+    for (const approach of approaches) {
+      try {
+        console.log(`🔍 Instagram: Trying ${approach.name} approach...`)
+        const res = await fetch(videoUrl, { headers: approach.headers })
+        console.log(`🔍 Instagram ${approach.name} response:`, res.status, res.statusText)
+        
+        if (res.ok) {
+          const html = await res.text()
+          console.log(`🔍 Instagram ${approach.name} HTML length:`, html.length)
+          
+          // Try multiple patterns (prioritize clean images)
+          const patterns = [
+            // Strategy 1: Look for specific 360x640 resolution (actual Instagram size)
+            /"src":"([^"]+)"[^}]*"config_width":360[^}]*"config_height":640/,
+            /"src":"([^"]+)"[^}]*"config_width":360/,
+            /"src":"([^"]+)"[^}]*"config_height":640/,
+            // Strategy 2: Look for clean video-specific images
+            /"video_url":"[^"]*".*?"display_url":"([^"]+)"/,
+            /"poster":"([^"]+)"/,
+            /"cover_frame_url":"([^"]+)"/,
+            /"video_versions":\[[^\]]*\].*?"image_versions2":\{[^}]*"candidates":\[[^\]]*\{[^}]*"url":"([^"]+)"/,
+            // Strategy 3: High-quality display images
+            /"display_url":"([^"]+)"/,
+            /"thumbnail_src":"([^"]+)"/,
+            // Strategy 4: Filter og:image and twitter:image for play button indicators
+            /<meta property="og:image" content="([^"]+)"/,
+            /<meta name="twitter:image" content="([^"]+)"/
+          ]
+          
+                    for (const pattern of patterns) {
+            const match = html.match(pattern)
+            if (match) {
+              let thumbnailUrl = match[1]
+              // Unescape Unicode characters
+              thumbnailUrl = thumbnailUrl.replace(/\\u002F/g, '/').replace(/\\u003A/g, ':').replace(/\\u003D/g, '=').replace(/\\u0026/g, '&')
+              // Decode HTML entities
+              thumbnailUrl = thumbnailUrl.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+              
+              if (thumbnailUrl.startsWith('http')) {
+                // Check if this is likely a clean image (for og:image and twitter:image)
+                const isMetaTag = pattern.source.includes('og:image') || pattern.source.includes('twitter:image')
+                if (isMetaTag) {
+                  // Skip if URL suggests it has play button overlay
+                  if (thumbnailUrl.includes('play') || thumbnailUrl.includes('overlay') || 
+                      thumbnailUrl.includes('thumb-play') || thumbnailUrl.includes('video-thumb')) {
+                    console.log(`⚠️ Instagram ${approach.name}: Skipping image with play button overlay:`, thumbnailUrl)
+                    continue
+                  }
+                }
+                
+                console.log(`✅ Instagram thumbnail found via ${approach.name}:`, thumbnailUrl)
+                return thumbnailUrl
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.log(`❌ Instagram ${approach.name} error:`, err)
+      }
+    }
+  }
+  return null
+}
+
 export async function POST(req: NextRequest) {
-  const body = await req.json()
+  const body = await req.json() // Only call this ONCE
   const { url, recipeId, extractThumbnail } = body
 
   // Instagram thumbnail extraction branch
@@ -445,8 +708,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const body = await req.json()
-    
     // Enhanced request validation
     const validation = validateVideoRequest(body)
     if (!validation.isValid) {
@@ -657,52 +918,45 @@ export async function POST(req: NextRequest) {
                 console.log(`⏱️  Total processing time: ${stats.duration}ms`)
                 console.log('📊 Processing statistics:', stats)
                 
-                // Save to database using existing schema
-                let savedRecipe
-                try {
-                  console.log('💾 Saving recipe to database...')
-                  savedRecipe = await withTimeout(
-                    prisma.recipe.create({
-                      data: {
-                        title: structuredData.title || 'Untitled Video Recipe',
-                        summary: `Video recipe from ${getPlatformDisplayName(platform!)} - ${validatedUrl}`,
-                        instructions: Array.isArray(structuredData.instructions)
-                          ? JSON.stringify(structuredData.instructions)
-                          : (structuredData.instructions || ''),
-                        rawIngredients: JSON.stringify(structuredData.rawIngredients || []),
-                        tags: JSON.stringify(suggestedTags),
-                        metadata: JSON.stringify({
-                          sourceUrl: validatedUrl,
-                          transcription: transcription.substring(0, 1000), // Truncate for storage
-                          extractedAt: new Date().toISOString(),
-                          platform: platform!,
-                          processingTime: stats.duration
-                        }),
-                        startSeason: 1, // Default to all year
-                        endSeason: 12,
-                        grade: 0, // Default grade
-                        time: 0 // Default time - could be extracted from transcription later
-                      },
-                      include: { ingredients: true }
-                    }),
-                    5000,
-                    'Database save timed out'
-                  )
-                } catch (dbError) {
-                  console.error('Database save error:', dbError)
-                  // Continue with response even if save fails, but include warning
-                  extractedData.metadata = {
-                    ...extractedData.metadata!,
-                    recipeId: undefined
+                // --- Task 3.2: Fetch default platform thumbnail for review dialog ---
+                let thumbnailCandidateUrl: string | null = null
+                console.log('🔍 About to call getDefaultThumbnailUrl with:', { validatedUrl, platform })
+                const thumbnailUrl = await getDefaultThumbnailUrl(validatedUrl, platform!)
+                console.log('📸 getDefaultThumbnailUrl returned:', thumbnailUrl)
+                console.log('Attempting to fetch thumbnailUrl:', thumbnailUrl)
+                if (thumbnailUrl) {
+                  // For review dialog, we just need the URL - don't need to download it yet
+                  thumbnailCandidateUrl = thumbnailUrl
+                  console.log('✅ Thumbnail URL ready for review dialog:', thumbnailCandidateUrl)
+                  
+                  // Optional: Test if we can fetch it (for logging purposes)
+                  try {
+                    const imgRes = await fetch(thumbnailUrl)
+                    if (!imgRes.ok) {
+                      console.log('ℹ️ Note: Thumbnail URL found but cannot be fetched directly (CORS):', imgRes.status, imgRes.statusText)
+                    } else {
+                      console.log('✅ Thumbnail URL is directly fetchable')
+                    }
+                  } catch (err) {
+                    console.log('ℹ️ Note: Thumbnail URL found but cannot be fetched directly (CORS):', err)
                   }
                 }
-
-                // Include saved recipe ID in response if successful
-                if (savedRecipe) {
-                  extractedData.metadata!.recipeId = savedRecipe.id
+                
+                // Add candidateImages if thumbnailCandidateUrl exists
+                console.log('🔍 Debug: thumbnailCandidateUrl =', thumbnailCandidateUrl)
+                if (thumbnailCandidateUrl) {
+                  console.log('Adding candidateImages:', thumbnailCandidateUrl)
+                  extractedData.candidateImages = [thumbnailCandidateUrl]
+                  console.log('✅ extractedData.candidateImages set to:', extractedData.candidateImages)
+                } else {
+                  console.log('❌ No thumbnailCandidateUrl, candidateImages will be undefined')
                 }
-
-                const warnings = savedRecipe ? [] : ['Recipe data extracted successfully but failed to save to database']
+                
+                console.log('Final extractedData before sendJSON:', extractedData)
+                console.log('Final extractedData.candidateImages:', extractedData.candidateImages)
+                
+                // Send response for user review - no database save yet
+                const warnings: string[] = []
                 sendJSON(createSuccessResponse(extractedData, stats.duration, warnings))
                 
               } catch (error: any) {

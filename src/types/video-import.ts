@@ -53,6 +53,7 @@ export interface ExtractedRecipeData {
   }
   suggestedTags?: string[]
   suggestedTagsRaw?: string
+  candidateImages?: string[] // Added for image picker compatibility
 }
 
 /**

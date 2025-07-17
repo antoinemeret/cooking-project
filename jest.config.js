@@ -14,6 +14,9 @@ const customJestConfig = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
+  transformIgnorePatterns: [
+    'node_modules/(?!(cheerio|cheerio-select|css-select|css-what|domelementtype|domhandler|domutils|entities|htmlparser2|nth-check|parse5|parse5-htmlparser2-tree-adapter|parse5-parser-stream|boolbase|css-tree|mdn-data|source-map-js)/)'
+  ],
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

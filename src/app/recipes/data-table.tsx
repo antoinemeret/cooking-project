@@ -29,7 +29,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTitle, SheetClose } from '@/components/ui/sheet'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { toast } from 'sonner'
 import { detectVideoUrl, getPlatformDisplayName } from "@/lib/video-url-detector"
@@ -37,7 +37,7 @@ import { VideoProgressTracker, VideoProcessingProgress, VideoProcessingStage } f
 import { ExtractedRecipeData, VideoPlatform } from "@/types/video-import"
 import { TagInput, TagSuggestion } from "@/components/ui/tag-input"
 import { XIcon } from 'lucide-react'
-import { CalendarPlus, CheckCircle2, Pencil, Trash2 } from 'lucide-react'
+import { CalendarPlus, CheckCircle2, Pencil, Trash2, Upload } from 'lucide-react'
 
 type ImportedRecipe = {
   id?: number
@@ -55,6 +55,7 @@ type ImportedRecipe = {
     extractedAt: string
   }
   suggestedTags?: string[]
+  candidateImages?: string[] // Added for image picker
 }
 
 export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], onRefresh: () => void, loading: boolean }) {
@@ -90,6 +91,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [isUnsavedChangesDialogOpen, setIsUnsavedChangesDialogOpen] = useState(false)
   const [isAddingToPlanner, setIsAddingToPlanner] = useState(false)
+  const [isUrlInputDialogOpen, setIsUrlInputDialogOpen] = useState(false)
 
   // Track planned recipes for disabling add button
   const [plannedRecipeIds, setPlannedRecipeIds] = useState<number[]>([])
@@ -110,11 +112,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
     fetchMealPlan()
   }, [onRefresh])
 
-  const openReviewDialog = (recipe: ImportedRecipe) => {
-    setImportedRecipe(recipe)
-    setIsManualMode(false)
-    setIsImportDialogOpen(true)
-  }
+  // Remove openReviewDialog; use setImportedRecipe and setIsImportDialogOpen only after successful import
 
   const handlePhotoImportClick = () => {
     photoInputRef.current?.click()
@@ -151,6 +149,21 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
     }
   }
 
+  // --- Robustified dialog state management for import flow ---
+
+  // 1. Add a helper to reset all import-related state
+  function resetImportState() {
+    setImportedRecipe(null)
+    setIsImportDialogOpen(false)
+    setIsManualMode(false)
+    setImportUrl('')
+    setImportError('')
+    setIsImporting(false)
+    setVideoProgress(null)
+    setIsVideoProcessing(false)
+  }
+
+  // 2. Update handleUrlImport to only open review dialog on success, and always reset state on failure
   const handleUrlImport = async () => {
     if (!importUrl) return
     setIsImporting(true)
@@ -158,16 +171,58 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
 
     // Detect if this is a video URL
     const videoDetection = detectVideoUrl(importUrl)
-    
+    let success = false
+    let newRecipe: ImportedRecipe | null = null
     if (videoDetection.isVideoUrl) {
-      // Handle video URL with streaming response
-      await handleVideoUrlImport(importUrl, videoDetection.platform)
+      const videoRecipe = await handleVideoUrlImport(importUrl, videoDetection.platform)
+      success = !!videoRecipe
+      newRecipe = videoRecipe
     } else {
-      // Handle regular URL with existing scraping logic
-      await handleRegularUrlImport(importUrl)
+      // Patch: handleRegularUrlImport returns the new recipe
+      const result = await handleRegularUrlImportWithReturn(importUrl)
+      success = result.success
+      newRecipe = result.recipe
+    }
+    setIsImporting(false)
+    if (success && newRecipe) {
+      setImportedRecipe(newRecipe)
+      setIsUrlInputDialogOpen(false)
+      setIsImportDialogOpen(true)
+    } else {
+      // On failure, reset all import state and keep dialogs closed
+      resetImportState()
     }
   }
 
+  // Add a patched version of handleRegularUrlImport that returns the new recipe
+  async function handleRegularUrlImportWithReturn(url: string): Promise<{ success: boolean, recipe: ImportedRecipe | null }> {
+    setImportStatus("Scraping URL...")
+    let importSuccess = false
+    let newRecipe: ImportedRecipe | null = null
+    try {
+      const res = await fetch(`/api/scrape`, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      })
+      if (res.ok) {
+        const apiResponse = await res.json()
+        const { recipe, images } = apiResponse
+        newRecipe = { ...recipe, candidateImages: images }
+        importSuccess = true
+      } else {
+        setImportError("Could not import recipe from URL.")
+      }
+    } catch (err) {
+      setImportError("An error occurred while importing from URL.")
+    } finally {
+      setIsImporting(false)
+      setImportStatus("Add new")
+    }
+    return { success: importSuccess, recipe: newRecipe }
+  }
+
+  // Update handleVideoUrlImport to return the new recipe object directly
   const handleVideoUrlImport = async (url: string, platform: any) => {
     const platformName = getPlatformDisplayName(platform)
     
@@ -181,6 +236,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
     })
     setImportStatus(`Processing ${platformName} video...`)
     
+    let videoRecipe: ImportedRecipe | null = null
     try {
       const response = await fetch('/api/recipes/import-video', {
         method: 'POST',
@@ -243,7 +299,9 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
             if (eventData.status === 'done' && eventData.data) {
               // Convert video import response to expected format with metadata
               const videoRecipeData: ExtractedRecipeData = eventData.data
-              const videoRecipe: ImportedRecipe = {
+              console.log('🎬 Video import response data:', videoRecipeData)
+              console.log('🖼️ Candidate images from backend:', videoRecipeData.candidateImages)
+              videoRecipe = {
                 title: videoRecipeData.title,
                 rawIngredients: videoRecipeData.rawIngredients || [],
                 instructions: videoRecipeData.instructions || '',
@@ -258,8 +316,10 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                   platform: platform.toLowerCase() as VideoPlatform,
                   extractedAt: new Date().toISOString()
                 },
-                suggestedTags: videoRecipeData.suggestedTags || []
+                suggestedTags: videoRecipeData.suggestedTags || [],
+                candidateImages: videoRecipeData.candidateImages || [] // Add candidate images
               }
+              console.log('🍽️ Final videoRecipe object:', videoRecipe)
               
               // Final success state
               setVideoProgress({
@@ -269,19 +329,11 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                 timestamp: Date.now()
               })
               
-              openReviewDialog(videoRecipe)
-              setImportStatus('Video processed successfully!')
               break
             }
 
             if (eventData.status === 'error') {
-              setVideoProgress({
-                stage: 'error',
-                error: eventData.error || 'Video processing failed',
-                platform: platformName,
-                timestamp: Date.now()
-              })
-              throw new Error(eventData.error || 'Video processing failed')
+              setImportError(eventData.error || 'Video import failed')
             }
           } catch (parseError) {
             // Ignore JSON parsing errors for partial chunks
@@ -303,7 +355,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       setImportError(errorMessage)
       setImportStatus('Video processing failed')
     } finally {
-      setIsImporting(false)
+      setIsVideoProcessing(false)
       // Clear video processing state after a delay
       setTimeout(() => {
         setIsVideoProcessing(false)
@@ -311,11 +363,13 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
         setImportStatus("Add new")
       }, 3000)
     }
+    return videoRecipe
   }
 
   const handleRegularUrlImport = async (url: string) => {
     setImportStatus("Scraping URL...")
     
+    let importSuccess = false
     try {
       const res = await fetch(`/api/scrape`, {
         method: "POST",
@@ -324,7 +378,8 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       })
       if (res.ok) {
         const { recipe: newRecipe } = await res.json()
-        openReviewDialog(newRecipe)
+        setImportedRecipe(newRecipe)
+        importSuccess = true
       } else {
         setImportError("Could not import recipe from URL.")
       }
@@ -334,6 +389,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       setIsImporting(false)
       setImportStatus("Add new")
     }
+    return importSuccess
   }
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -362,16 +418,16 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
         const { done, value } = await reader.read()
         if (done) break
         const chunk = decoder.decode(value, { stream: true })
-        console.log('Received chunk:', chunk)
         const eventData = JSON.parse(chunk)
-        console.log('Parsed event data:', eventData)
 
         if (eventData.status) {
           setImportStatus(eventData.status)
         }
 
         if (eventData.status === "done") {
-          openReviewDialog(eventData.data as ImportedRecipe)
+          setImportedRecipe(eventData.data as ImportedRecipe)
+          setIsImportDialogOpen(true)
+          setIsManualMode(false)
           setImportStatus("Done!")
         }
 
@@ -401,7 +457,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       })
     } finally {
       setIsImporting(false)
-      setTimeout(() => setImportStatus("Add new"), 3000)
+      setImportStatus("Add new")
     }
   }
 
@@ -528,9 +584,37 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
   }, [isEditMode])
 
   // Debug log for Input component used in sheet edit mode
-  console.log('Sheet edit mode Input component:', Input)
-  // Debug log for selectedRecipe before rendering Sheet
-  console.log('selectedRecipe', selectedRecipe)
+  // 1. In DataTable, log importedRecipe before rendering ImportRecipeDialog
+  // Render the Import from URL dialog
+  const renderUrlInputDialog = () => (
+    <Dialog open={isUrlInputDialogOpen} onOpenChange={setIsUrlInputDialogOpen}>
+      <DialogContent className="max-w-md w-full">
+        <DialogHeader>
+          <DialogTitle>Import Recipe from URL or Video</DialogTitle>
+        </DialogHeader>
+        <div className="mb-4">
+          <Input
+            type="text"
+            placeholder="Paste recipe URL or video link..."
+            value={importUrl}
+            onChange={e => setImportUrl(e.target.value)}
+            disabled={isImporting}
+            className="w-full"
+          />
+        </div>
+        {importError && <div className="text-sm text-destructive mb-2">{importError}</div>}
+        <DialogFooter>
+          <Button onClick={handleUrlImport} disabled={isImporting || !importUrl} className="w-full">
+            {isImporting ? 'Importing...' : 'Import'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+  // 3. Update handleReviewDialogClose to always reset all import state
+  function handleReviewDialogClose() {
+    resetImportState()
+  }
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -541,24 +625,25 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
           className="max-w-sm"
         />
         <div className="flex gap-2">
+          {/* 1. In DataTable, log importedRecipe before rendering ImportRecipeDialog */}
+          {/* Render the Import from URL dialog */}
           <ImportRecipeDialog
             open={isImportDialogOpen}
-            onOpenChange={setIsImportDialogOpen}
+            onOpenChange={handleReviewDialogClose}
             recipe={importedRecipe}
             setRecipe={setImportedRecipe}
             isManualMode={isManualMode}
             setIsManualMode={setIsManualMode}
-            onImport={onRefresh}
+            onImport={handleUrlImport}
             setProcessingRecipeId={setProcessingRecipeId}
-            // Pass state and handlers for URL import
             url={importUrl}
             setUrl={setImportUrl}
             onUrlImport={handleUrlImport}
             loading={isImporting}
             error={importError}
-            // Pass video processing state
             videoProgress={videoProgress}
             isVideoProcessing={isVideoProcessing}
+            onRefresh={onRefresh}
           />
           
           {/* Compact Video Progress Tracker - shown when dialog is closed and video is processing */}
@@ -588,9 +673,8 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
-                  setImportedRecipe(null)
-                  setIsManualMode(false)
-                  setIsImportDialogOpen(true)
+                  setIsUrlInputDialogOpen(true)
+                  // Do NOT open the review dialog or reset importedRecipe here
                 }}
               >
                 Import from URL or Video
@@ -952,6 +1036,8 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
           </Dialog>
         </Sheet>
       )}
+      {/* URL Input Dialog */}
+      {renderUrlInputDialog()}
     </div>
   )
 }
@@ -1018,6 +1104,8 @@ type ImportRecipeDialogProps = {
   // Video processing props
   videoProgress: VideoProcessingProgress | null
   isVideoProcessing: boolean
+  // Add onRefresh prop
+  onRefresh: () => void
 }
 
 function ImportRecipeDialog({
@@ -1036,7 +1124,59 @@ function ImportRecipeDialog({
   error,
   videoProgress,
   isVideoProcessing,
+  onRefresh,
 }: ImportRecipeDialogProps) {
+  // --- State hooks: must be at the top ---
+  const [title, setTitle] = useState(recipe?.title || '')
+  const [ingredients, setIngredients] = useState((recipe?.rawIngredients || []).join('\n'))
+  const [instructions, setInstructions] = useState(recipe?.instructions || '')
+  const [tags, setTags] = useState<string[]>(recipe?.tags || [])
+  // Image picker state
+  const [candidateImages, setCandidateImages] = useState<string[]>([])
+  const [selectedImageIdx, setSelectedImageIdx] = useState(0)
+  const [uploadedImage, setUploadedImage] = useState<File | null>(null)
+  const [uploadedPreview, setUploadedPreview] = useState<string | null>(null)
+
+  // Sync dialog fields with recipe prop
+  useEffect(() => {
+    setTitle(recipe?.title || '')
+    setIngredients((recipe?.rawIngredients || []).join('\n'))
+    setInstructions(recipe?.instructions || '')
+    setTags(recipe?.tags || [])
+    // Update candidateImages whenever recipe changes, regardless of dialog open state
+    if (recipe) {
+      console.log('🖼️ Recipe updated, candidateImages:', recipe.candidateImages)
+      setCandidateImages(recipe.candidateImages || [])
+      setSelectedImageIdx(0)
+      setUploadedImage(null)
+      setUploadedPreview(null)
+    }
+  }, [recipe])
+
+  // Only reset candidateImages when dialog is closed
+  useEffect(() => {
+    if (!open) {
+      setCandidateImages([])
+      setSelectedImageIdx(0)
+      setUploadedImage(null)
+      setUploadedPreview(null)
+    }
+  }, [open])
+
+  function handleImageSelect(idx: number) {
+    setSelectedImageIdx(idx)
+    setUploadedImage(null)
+    setUploadedPreview(null)
+  }
+
+  function handleUploadChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) {
+      setUploadedImage(file)
+      setUploadedPreview(URL.createObjectURL(file))
+    }
+  }
+
   function handleReset() {
     setIsManualMode(false)
     setRecipe(null)
@@ -1058,10 +1198,206 @@ function ImportRecipeDialog({
       // error handling
     }
   }
+
+  // Add suggested tag handler
+  function handleAddSuggestedTag(tag: string) {
+    if (!tags.includes(tag)) setTags([...tags, tag])
+  }
+
+  // Define handleSave with backend call
+  async function handleSave() {
+    if (!title.trim() || !ingredients.trim() || !instructions.trim()) {
+      alert('Please fill in all fields')
+      return
+    }
+
+    try {
+      // Prepare recipe data for backend
+      const recipeData = {
+        title: title.trim(),
+        rawIngredients: ingredients.split('\n').map(line => line.trim()).filter(Boolean),
+        instructions: instructions.trim(),
+        tags: JSON.stringify(tags),
+        // Include selected image URL if user selected a candidate image
+        selectedImageUrl: candidateImages[selectedImageIdx] || null
+      }
+
+      // Call existing backend endpoint
+      const response = await fetch('/api/recipes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(recipeData)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save recipe')
+      }
+
+      const responseData = await response.json()
+      const { recipe: savedRecipe, imageDownloadStatus, imageDownloadMessage } = responseData
+
+      // --- Handle user-uploaded image separately ---
+      if (uploadedImage) {
+        // User uploaded a new image - use the upload-image endpoint
+        try {
+          const formData = new FormData()
+          formData.append('file', uploadedImage)
+          formData.append('recipeId', savedRecipe.id)
+          const uploadResponse = await fetch('/api/recipes/upload-image', {
+            method: 'POST',
+            body: formData
+          })
+          if (!uploadResponse.ok) {
+            console.error('Image upload failed:', await uploadResponse.text())
+          }
+        } catch (uploadError) {
+          console.error('Error uploading image:', uploadError)
+        }
+      }
+      // Note: Candidate image URL is handled by the /api/recipes endpoint directly
+
+      // Show user-friendly message about image download status
+      if (imageDownloadStatus === 'success') {
+        console.log('✅ Image downloaded successfully')
+      } else if (imageDownloadStatus === 'failed' && imageDownloadMessage) {
+        // Show a non-blocking notification about image download failure
+        setTimeout(() => {
+          alert(`Recipe saved successfully!\n\n⚠️ ${imageDownloadMessage}`)
+        }, 100)
+      }
+
+      // Close dialog and refresh recipe list
+      onOpenChange(false)
+      onRefresh()
+
+    } catch (error) {
+      console.error('Error saving recipe:', error)
+      alert(`Failed to save recipe: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
 // RETURN your dialog JSX here!
 return (
   <Dialog open={open} onOpenChange={onOpenChange}>
-    {/* ...dialog content... */}
+    <DialogContent className="max-w-md w-full">
+      <DialogHeader>
+        <DialogTitle>{isManualMode ? 'Create Recipe' : 'Review Recipe'}</DialogTitle>
+      </DialogHeader>
+      {/* Editable fields for title, ingredients, instructions */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium mb-1">Title</label>
+        <input
+          className="w-full p-2 border rounded mb-2"
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="Recipe title"
+        />
+        <label className="block text-sm font-medium mb-1">Ingredients</label>
+        <textarea
+          className="w-full p-2 border rounded mb-2"
+          rows={4}
+          value={ingredients}
+          onChange={e => setIngredients(e.target.value)}
+          placeholder="One ingredient per line"
+        />
+        <label className="block text-sm font-medium mb-1">Instructions</label>
+        <textarea
+          className="w-full p-2 border rounded"
+          rows={6}
+          value={instructions}
+          onChange={e => setInstructions(e.target.value)}
+          placeholder="Cooking instructions"
+        />
+      </div>
+      {/* --- Image Section: everything below instructions --- */}
+      <div className="mb-4">
+        {/* Image Carousel Picker */}
+        {candidateImages.length > 0 && (
+          <div className="flex overflow-x-auto gap-4 pb-2 mb-2">
+            {candidateImages.map((img, idx) => (
+              <div
+                key={img}
+                className={`relative flex-shrink-0 w-32 h-32 rounded-lg border-2 cursor-pointer transition-all ${selectedImageIdx === idx && !uploadedImage ? 'border-blue-500' : 'border-transparent'}`}
+                onClick={() => handleImageSelect(idx)}
+                tabIndex={0}
+                aria-label={`Select image ${idx + 1}`}
+              >
+                <img src={img} alt={`Candidate ${idx + 1}`} className="object-cover w-full h-full rounded-lg" />
+                {selectedImageIdx === idx && !uploadedImage && (
+                  <CheckCircle2 className="absolute top-1 left-1 w-6 h-6 text-blue-500 bg-white rounded-full shadow" />
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Selected Image Preview */}
+        <div className="mb-2">
+          <div className="text-sm font-medium mb-1">Selected Image Preview</div>
+          <div className="w-full h-40 rounded-lg overflow-hidden border">
+            {uploadedPreview ? (
+              <img src={uploadedPreview} alt="Selected preview" className="object-cover w-full h-full" />
+            ) : candidateImages[selectedImageIdx] ? (
+              <img src={candidateImages[selectedImageIdx]} alt="Selected preview" className="object-cover w-full h-full" />
+            ) : (
+              <div className="flex items-center justify-center h-full text-muted-foreground">No image selected</div>
+            )}
+          </div>
+        </div>
+        {/* Upload button below preview */}
+        <div className="mt-2 flex flex-col items-center gap-2">
+          <label className="inline-flex items-center gap-2 cursor-pointer text-blue-600 hover:underline">
+            <Upload className="w-5 h-5" />
+            <span>Upload your own image</span>
+            <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleUploadChange} />
+          </label>
+          {uploadedPreview && (
+            <div className="relative w-32 h-32 mt-2">
+              <img src={uploadedPreview} alt="Uploaded preview" className="object-cover w-full h-full rounded-lg border-2 border-blue-500" />
+              <CheckCircle2 className="absolute top-1 left-1 w-6 h-6 text-blue-500 bg-white rounded-full shadow" />
+            </div>
+          )}
+        </div>
+      </div>
+      {/* --- Tag Section: below image section --- */}
+      <div className="mb-4">
+        {recipe?.suggestedTags && recipe.suggestedTags.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {recipe.suggestedTags.map(tag => (
+              <button
+                key={tag}
+                type="button"
+                className={`px-2 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200 text-xs hover:bg-blue-100 ${tags.includes(tag) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={() => handleAddSuggestedTag(tag)}
+                disabled={tags.includes(tag)}
+              >
+                + {tag}
+              </button>
+            ))}
+          </div>
+        )}
+        <TagInput
+          tags={tags}
+          onTagsChange={setTags}
+          placeholder="Add tags like 'vegan', 'quick', 'dinner'..."
+          getSuggestions={async (query: string) => {
+            try {
+              const response = await fetch(`/api/tags?query=${encodeURIComponent(query)}`)
+              if (response.ok) {
+                const data = await response.json()
+                return data.suggestions || []
+              }
+            } catch (error) {
+              console.warn('Failed to fetch tag suggestions:', error)
+            }
+            return []
+          }}
+        />
+      </div>
+      {/* Save button */}
+      <div className="flex justify-end mt-4">
+        <Button onClick={handleSave} className="w-full">Save</Button>
+      </div>
+    </DialogContent>
   </Dialog>
 )
 }

@@ -1,5 +1,6 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { DataTable } from './data-table'
 import { toast } from 'sonner'
 
@@ -68,15 +69,16 @@ describe('DataTable TagInput Integration', () => {
   })
 
   it('renders TagInput in manual recipe creation mode', async () => {
+    const user = userEvent.setup()
     render(<DataTable recipes={mockRecipes} onRefresh={mockOnRefresh} loading={false} />)
     
     // Open the import dialog
     const addButton = screen.getByText('Add new')
-    fireEvent.click(addButton)
+    await user.click(addButton)
     
-    // Click "Create manually"
-    const createManually = screen.getByText('Create manually')
-    fireEvent.click(createManually)
+    // Wait for dropdown to appear, then click "Create manually"
+    const createManually = await screen.findByText('Create manually')
+    await user.click(createManually)
     
     // Check that TagInput is rendered
     await waitFor(() => {
@@ -86,13 +88,14 @@ describe('DataTable TagInput Integration', () => {
   })
 
   it('allows adding and removing tags in the form', async () => {
+    const user = userEvent.setup()
     render(<DataTable recipes={mockRecipes} onRefresh={mockOnRefresh} loading={false} />)
     
     // Open manual creation dialog
     const addButton = screen.getByText('Add new')
-    fireEvent.click(addButton)
-    const createManually = screen.getByText('Create manually')
-    fireEvent.click(createManually)
+    await user.click(addButton)
+    const createManually = await screen.findByText('Create manually')
+    await user.click(createManually)
     
     // Add a tag
     const tagInput = screen.getByTestId('tag-input-field')

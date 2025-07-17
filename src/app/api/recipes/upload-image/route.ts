@@ -11,6 +11,40 @@ const MAX_SIZE = 5 * 1024 * 1024 // 5MB
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'recipes')
 
 export async function POST(req: NextRequest) {
+  // Check if this is a JSON request for remote image URL
+  const contentType = req.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    try {
+      const { imageUrl, recipeId } = await req.json()
+      if (!imageUrl || !recipeId) {
+        return NextResponse.json({ error: 'Missing imageUrl or recipeId' }, { status: 400 })
+      }
+      // Fetch the image from the remote URL
+      const imgRes = await fetch(imageUrl)
+      if (!imgRes.ok) {
+        return NextResponse.json({ error: 'Failed to fetch image from URL' }, { status: 400 })
+      }
+      const arrayBuffer = await imgRes.arrayBuffer()
+      const buffer = Buffer.from(arrayBuffer)
+      // Guess extension from content-type
+      const ext = imgRes.headers.get('content-type')?.split('/').pop() || 'jpg'
+      const filename = `recipe-${recipeId}-remote-${Date.now()}.${ext}`
+      const filePath = path.join(UPLOAD_DIR, filename)
+      const publicUrl = `/uploads/recipes/${filename}`
+      // Save the file
+      await fs.mkdir(UPLOAD_DIR, { recursive: true })
+      await fs.writeFile(filePath, buffer)
+      // Update recipe
+      const recipe = await prisma.recipe.update({
+        where: { id: Number(recipeId) },
+        data: { image: publicUrl }
+      })
+      return NextResponse.json(recipe)
+    } catch (err) {
+      return NextResponse.json({ error: 'Failed to process remote image' }, { status: 500 })
+    }
+  }
+
   const formData = await req.formData()
   const file = formData.get('file') as File | null
   const recipeId = formData.get('recipeId') as string | null
