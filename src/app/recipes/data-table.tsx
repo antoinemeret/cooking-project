@@ -803,7 +803,51 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
           <SheetContent className="w-full sm:w-full md:w-2/3 md:min-w-[500px] p-6 flex flex-col gap-6" showCloseButton={!isEditMode}>
             <SheetTitle className="sr-only">{selectedRecipe?.title || 'Recipe Details'}</SheetTitle>
             {!isEditMode && (
-              <div className="text-2xl font-bold mt-2 mb-4">{selectedRecipe?.title}</div>
+              <>
+                {/* Hero Image Section */}
+                <div className="w-full">
+                  {selectedRecipe?.image ? (
+                    <div className="relative w-full">
+                      {/* Mobile: Full width hero image */}
+                      <div className="md:hidden">
+                                                 <img 
+                           src={selectedRecipe.image} 
+                           alt={`${selectedRecipe.title} recipe image`}
+                           className="w-full h-48 object-cover rounded-lg"
+                           loading="lazy"
+                           onError={(e) => {
+                             // Fallback to placeholder if image fails to load
+                             const img = e.target as HTMLImageElement
+                             img.src = '/placeholder-recipe.svg'
+                             img.onerror = null // Prevent infinite loop
+                           }}
+                         />
+                        <div className="text-2xl font-bold mt-4 mb-2">{selectedRecipe?.title}</div>
+                      </div>
+                      {/* Desktop: Square image next to title + actions */}
+                      <div className="hidden md:flex md:items-start md:gap-4">
+                                                 <img 
+                           src={selectedRecipe.image} 
+                           alt={`${selectedRecipe.title} recipe image`}
+                           className="w-32 h-32 object-cover rounded-lg flex-shrink-0"
+                           loading="lazy"
+                           onError={(e) => {
+                             // Fallback to placeholder if image fails to load
+                             const img = e.target as HTMLImageElement
+                             img.src = '/placeholder-recipe.svg'
+                             img.onerror = null // Prevent infinite loop
+                           }}
+                         />
+                        <div className="flex-1">
+                          <div className="text-2xl font-bold mb-2">{selectedRecipe?.title}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-2xl font-bold mt-2 mb-4">{selectedRecipe?.title}</div>
+                  )}
+                </div>
+              </>
             )}
             {/* Sticky close button in edit mode */}
             {isEditMode && (

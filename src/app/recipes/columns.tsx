@@ -19,6 +19,7 @@ export type Recipe = {
   time: number
   createdAt: Date
   updatedAt: Date
+  image?: string | null // URL to recipe image
   ingredients: { name: string; startSeason: number; endSeason: number }[]
 }
 
@@ -58,12 +59,26 @@ export const columns: ColumnDef<Recipe>[] = [
     cell: ({ row }) => {
       const recipe = row.original
       return (
-        <Link
-          href={`/recipes/${recipe.id}`}
-          className='text-blue-600 hover:underline'
-        >
-          {recipe.title}
-        </Link>
+        <div className="flex items-center gap-3">
+                     <img 
+             src={recipe.image || '/placeholder-recipe.svg'} 
+             alt={`${recipe.title} recipe image`}
+             className="w-12 h-12 object-cover rounded-lg border border-border flex-shrink-0"
+             loading="lazy"
+             onError={(e) => {
+               // Fallback to placeholder if image fails to load
+               const img = e.target as HTMLImageElement
+               img.src = '/placeholder-recipe.svg'
+               img.onerror = null // Prevent infinite loop
+             }}
+           />
+          <Link
+            href={`/recipes/${recipe.id}`}
+            className='text-blue-600 hover:underline'
+          >
+            {recipe.title}
+          </Link>
+        </div>
       )
     }
   },

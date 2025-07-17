@@ -48,11 +48,11 @@
   - [x] 3.3 Update manual and edit flows to allow image upload, replacement, or removal.
   - [x] 3.4 Show the image (or placeholder) in the review dialog before saving.
   - [x] 3.5 Display a message in the review dialog if image import fails.
-- [ ] 4.0 Display Images in Recipe Sheet and Recipe Cards
-  - [ ] 4.1 Display the hero image (full width at the top of the recipe sheet on mobile / square image placed next a grouped title + actions on desktop).
-  - [ ] 4.2 Display a square thumbnail in recipe cards (assistant, planner, recipe list).
-  - [ ] 4.3 Use a visually appealing placeholder if no image is present.
-  - [ ] 4.4 Ensure images are responsive and accessible.
+- [x] 4.0 Display Images in Recipe Sheet and Recipe Cards
+  - [x] 4.1 Display the hero image (full width at the top of the recipe sheet on mobile / square image placed next a grouped title + actions on desktop).
+  - [x] 4.2 Display a square thumbnail in recipe cards (assistant, planner, recipe list).
+  - [x] 4.3 Use a visually appealing placeholder if no image is present.
+  - [x] 4.4 Ensure images are responsive and accessible.
 - [ ] 5.0 Add Placeholders, Error Handling, and User Feedback
   - [ ] 5.1 Add placeholder image(s) to `public/` and reference in UI.
   - [ ] 5.2 Show user-friendly error messages for failed uploads or imports.

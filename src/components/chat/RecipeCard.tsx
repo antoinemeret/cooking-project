@@ -14,6 +14,7 @@ export interface RecipeSuggestion {
     time: number
     grade: number
     tags?: string
+    image?: string | null
   }
   reason: string
   confidence: number
@@ -94,7 +95,7 @@ export function RecipeCard({
     >
       <div className="space-y-3">
         {/* Recipe Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between gap-3">
           <div className="flex-1">
             <h3 className="font-semibold text-card-foreground text-base sm:text-lg mb-1">
               {recipe.title}
@@ -102,6 +103,21 @@ export function RecipeCard({
             <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
               {recipe.summary}
             </p>
+          </div>
+          {/* Recipe Thumbnail */}
+          <div className="flex-shrink-0">
+                         <img 
+               src={recipe.image || '/placeholder-recipe.svg'} 
+               alt={`${recipe.title} recipe image`}
+               className="w-16 h-16 object-cover rounded-lg border border-border"
+               loading="lazy"
+               onError={(e) => {
+                 // Fallback to placeholder if image fails to load
+                 const img = e.target as HTMLImageElement
+                 img.src = '/placeholder-recipe.svg'
+                 img.onerror = null // Prevent infinite loop
+               }}
+             />
           </div>
         </div>
 

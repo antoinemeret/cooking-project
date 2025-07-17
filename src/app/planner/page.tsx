@@ -23,6 +23,7 @@ interface PlannedRecipe {
     time: number
     grade: number
     tags?: string
+    image?: string | null
   }
 }
 
@@ -95,6 +96,25 @@ function PlannedRecipeCard({
             aria-label={`Mark ${recipe.title} as ${completed ? 'incomplete' : 'complete'}`}
             className="h-5 w-5"
           />
+        </div>
+
+        {/* Recipe Thumbnail */}
+        <div className="flex-shrink-0">
+                     <img 
+             src={recipe.image || '/placeholder-recipe.svg'} 
+             alt={`${recipe.title} recipe image`}
+             className={cn(
+               "w-16 h-16 object-cover rounded-lg border border-border transition-opacity",
+               completed && "opacity-50"
+             )}
+             loading="lazy"
+             onError={(e) => {
+               // Fallback to placeholder if image fails to load
+               const img = e.target as HTMLImageElement
+               img.src = '/placeholder-recipe.svg'
+               img.onerror = null // Prevent infinite loop
+             }}
+           />
         </div>
 
         {/* Recipe Content */}
