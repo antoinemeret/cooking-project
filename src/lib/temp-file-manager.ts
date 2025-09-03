@@ -231,7 +231,7 @@ export class TempFileManager {
     const paths = {
       sessionDir,
       videoPath: path.join(sessionDir, 'video.mp4'),
-      audioPath: path.join(sessionDir, 'audio.wav'),
+      audioPath: path.join(sessionDir, 'audio.mp3'),
       transcriptPath: path.join(sessionDir, 'transcript.txt')
     }
 

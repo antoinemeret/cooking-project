@@ -1,10 +1,11 @@
 import { NextRequest } from 'next/server'
-import { Ollama } from 'ollama'
 import { spawn } from 'child_process'
 import { promises as fs } from 'fs'
 import * as path from 'path'
 import { withTempSession } from '@/lib/temp-file-manager'
 import { validateVideoUrl, getPlatformDisplayName } from '@/lib/video-url-validator'
+import { getRecipeTagSuggestions } from '@/lib/ai-client'
+import fetch from 'node-fetch'
 
 import { 
   createProgressResponse, 
@@ -144,7 +145,7 @@ function classifyError(error: Error, stage: string): { code: VideoImportErrorCod
   }
   
   // Transcription errors
-  if (message.includes('transcription failed') || message.includes('whisper')) {
+  if (message.includes('transcription failed') || message.includes('whisper') || message.includes('openai api error')) {
     return {
       code: VideoImportErrorCode.TRANSCRIPTION_FAILED,
       statusCode: 422,
@@ -211,85 +212,181 @@ function classifyError(error: Error, stage: string): { code: VideoImportErrorCod
  * Transcribe audio using local Whisper
  */
 async function transcribeAudio(audioPath: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const scriptPath = path.join(process.cwd(), 'scripts', 'whisper_transcribe.sh')
-    const child = spawn('bash', [scriptPath, audioPath, 'tiny', 'auto'])
+  console.log(`🎵 Starting transcription for audio file: ${audioPath}`)
+  
+  // Check if OpenAI API key is available
+  if (!process.env.OPENAI_API_KEY) {
+    console.error('❌ OpenAI API key not configured')
+    throw new Error('OpenAI API key not configured. Please set OPENAI_API_KEY environment variable.')
+  }
+  console.log('✅ OpenAI API key is configured')
+
+  try {
+    // Check if file exists
+    console.log('📁 Checking if audio file exists...')
+    const fileExists = await fs.access(audioPath).then(() => true).catch(() => false)
+    if (!fileExists) {
+      console.error('❌ Audio file does not exist:', audioPath)
+      throw new Error(`Audio file does not exist: ${audioPath}`)
+    }
+    console.log('✅ Audio file exists')
+
+    // Read the audio file
+    console.log('📖 Reading audio file...')
+    const audioBuffer = await fs.readFile(audioPath)
+    console.log(`📁 Audio file size: ${audioBuffer.length} bytes`)
+    console.log(`📁 Audio file path: ${audioPath}`)
     
-    let output = ''
-    let errorOutput = ''
+    // Check if file exists and has content
+    if (audioBuffer.length === 0) {
+      console.error('❌ Audio file is empty')
+      throw new Error('Audio file is empty')
+    }
     
-    child.stdout.on('data', (data) => {
-      output += data.toString()
+    // Check file size limit (OpenAI has a 25MB limit)
+    const maxSize = 25 * 1024 * 1024 // 25MB
+    if (audioBuffer.length > maxSize) {
+      console.log(`⚠️  Audio file is too large: ${audioBuffer.length} bytes (max: ${maxSize} bytes)`)
+      throw new Error(`Audio file too large: ${audioBuffer.length} bytes (max: ${maxSize} bytes)`)
+    }
+    
+    console.log('🔄 Audio file is valid for OpenAI API')
+    
+    // Call OpenAI Whisper API
+    console.log('🤖 Calling OpenAI Whisper API...')
+    
+    // Use axios for better multipart form data handling
+    const axios = (await import('axios')).default
+    const FormData = (await import('form-data')).default
+    
+    console.log('📦 Creating FormData...')
+    const formData = new FormData()
+    formData.append('file', audioBuffer, {
+      filename: 'audio.mp3',
+      contentType: 'audio/mpeg'
     })
-
-    child.stderr.on('data', (data) => {
-      errorOutput += data.toString()
-    })
-
-    child.on('close', (code) => {
-      if (code !== 0) {
-        console.error(`Whisper transcription failed: ${errorOutput}`)
-        reject(new Error('Audio transcription failed'))
-        return
-      }
-
-      try {
-        const result = JSON.parse(output.trim())
-        if (result.success) {
-          resolve(result.text)
-        } else {
-          reject(new Error(result.error || 'Transcription failed'))
+    formData.append('model', 'whisper-1')
+    // Remove language parameter - let Whisper auto-detect
+    formData.append('response_format', 'text')
+    
+    console.log('🔑 API Key check:', process.env.OPENAI_API_KEY ? 'Present' : 'Missing')
+    console.log('📁 FormData created with audio buffer size:', audioBuffer.length, 'bytes')
+    console.log('📋 FormData headers:', formData.getHeaders())
+    
+    let response: any
+    try {
+      console.log('📤 Sending axios request to OpenAI...')
+      response = await axios.post('https://api.openai.com/v1/audio/transcriptions', formData, {
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          ...formData.getHeaders()
         }
-      } catch (parseError) {
-        console.error('Failed to parse transcription result:', parseError)
-        reject(new Error('Failed to parse transcription result'))
-      }
-    })
+      })
+      console.log('✅ Axios request successful, status:', response.status)
+    } catch (axiosError: any) {
+      console.error('❌ Axios request failed:')
+      console.error('  - Status:', axiosError.response?.status)
+      console.error('  - Status Text:', axiosError.response?.statusText)
+      console.error('  - Response Data:', axiosError.response?.data)
+      console.error('  - Error Message:', axiosError.message)
+      console.error('  - Request Config:', {
+        url: axiosError.config?.url,
+        method: axiosError.config?.method,
+        headers: axiosError.config?.headers
+      })
+      throw axiosError
+    }
 
-    child.on('error', (err) => {
-      console.error('Failed to start whisper transcription:', err)
-      reject(new Error('Transcription process failed to start'))
-    })
-  })
+    if (response.status !== 200) {
+      console.error('❌ OpenAI API error:', response.status, response.data)
+      console.error('📄 Full error response:', JSON.stringify(response.data, null, 2))
+      console.error('📁 Audio file details:')
+      console.error('  - Path:', audioPath)
+      console.error('  - Size:', audioBuffer.length, 'bytes')
+      console.error('  - Size in MB:', (audioBuffer.length / 1024 / 1024).toFixed(2), 'MB')
+      throw new Error(`OpenAI API error: ${response.status} - ${JSON.stringify(response.data)}`)
+    }
+
+    const transcription = response.data
+    console.log(`📝 Transcription successful, text length: ${transcription.length}`)
+    console.log(`📄 Transcription preview: ${transcription.substring(0, 200)}...`)
+    
+    return transcription
+  } catch (error) {
+    console.error('❌ Transcription failed:', error)
+    throw new Error(`Transcription failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
 }
 
 /**
- * Structure recipe using Deepseek
+ * Structure recipe using Anthropic Claude API
  */
 async function structureRecipe(transcription: string, metadata?: { title?: string; ingredients?: string[] }): Promise<any> {
-  let content = ''
-  let rawResponse = ''
+  console.log('🧠 Starting recipe structuring with Anthropic Claude...')
+  console.log(`📝 Transcription length: ${transcription.length}`)
+  console.log(`📊 Metadata:`, metadata)
   
+  // Check if Anthropic API key is available
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('Anthropic API key not configured. Please set ANTHROPIC_API_KEY environment variable.')
+  }
+
   try {
-    const ollama = new Ollama()
+    const { Anthropic } = await import('@anthropic-ai/sdk')
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
     
-    const response = await ollama.generate({
-      model: 'mistral:7b-instruct',
-      prompt: getRecipeStructuringPrompt(transcription, metadata),
-      stream: false
+    const prompt = getRecipeStructuringPrompt(transcription, metadata)
+    console.log('📋 Recipe structuring prompt (first 500 chars):', prompt.substring(0, 500))
+    
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 2000,
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
     })
 
-    rawResponse = response.response
+    const rawResponse = response.content[0]
+    if (rawResponse.type !== 'text') {
+      throw new Error('Unexpected response format from Anthropic')
+    }
+    
+    const content = rawResponse.text
+    console.log('🤖 Claude raw response (first 500 chars):', content.substring(0, 500))
 
-    // Extract JSON from Mistral response
-    content = rawResponse
+    // Extract JSON from Claude response
+    let jsonContent = content
     
     // Try to find JSON in code blocks first
     const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/)
     if (jsonMatch) {
-      content = jsonMatch[1]
+      jsonContent = jsonMatch[1]
+      console.log('✅ Found JSON in code block')
     } else {
       // Try to find JSON in the response body
       const jsonStart = content.indexOf('{')
       const jsonEnd = content.lastIndexOf('}')
       if (jsonStart !== -1 && jsonEnd !== -1) {
-        content = content.substring(jsonStart, jsonEnd + 1)
+        jsonContent = content.substring(jsonStart, jsonEnd + 1)
+        console.log('✅ Found JSON in response body')
+      } else {
+        console.log('❌ No JSON found in response')
+        throw new Error('No valid JSON found in Claude response')
       }
     }
-    return JSON.parse(content)
+    
+    console.log('📋 Extracted JSON content:', jsonContent)
+    const parsed = JSON.parse(jsonContent)
+    console.log('✅ Successfully parsed recipe structure:', parsed)
+    return parsed
   } catch (error) {
     console.error('Recipe structuring failed:', error)
-    throw new Error('Recipe structuring failed')
+    throw new Error(`Recipe structuring failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
 }
 
@@ -301,10 +398,316 @@ async function extractVideoMetadata(videoUrl: string): Promise<{ title?: string;
   return {}
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json()
+// Helper: Extract default thumbnail URL for supported platforms
+async function getDefaultThumbnailUrl(videoUrl: string, platform: string): Promise<string | null> {
+  if (platform === 'youtube') {
+    // Extract video ID from URL
+    const match = videoUrl.match(/[?&]v=([\w-]+)/) || videoUrl.match(/youtu\.be\/([\w-]+)/) || videoUrl.match(/shorts\/([\w-]+)/)
+    const videoId = match ? match[1] : null
+    if (videoId) {
+      // Standard YouTube thumbnail URL
+      return `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+    }
+  } else if (platform === 'tiktok') {
+    // TikTok: Try multiple approaches with different user agents
+    console.log('🔍 TikTok: Attempting to fetch thumbnail from:', videoUrl)
     
+    const tiktokApproaches: Array<{ headers: Record<string, string>; name: string }> = [
+      // Approach 1: Mobile Safari (iOS)
+      {
+        name: 'Mobile Safari',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
+        }
+      },
+      // Approach 2: Android Chrome
+      {
+        name: 'Android Chrome',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
+        }
+      },
+      // Approach 3: Facebook crawler
+      {
+        name: 'Facebook Crawler',
+        headers: {
+          'User-Agent': 'facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      },
+      // Approach 4: Twitter crawler
+      {
+        name: 'Twitter Crawler',
+        headers: {
+          'User-Agent': 'Twitterbot/1.0',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      }
+    ]
+
+    for (const approach of tiktokApproaches) {
+      try {
+        console.log(`🔍 TikTok: Trying ${approach.name} approach...`)
+        const res = await fetch(videoUrl, { headers: approach.headers })
+        console.log(`🔍 TikTok ${approach.name} response:`, res.status, res.statusText)
+        
+                 if (res.ok) {
+          const html = await res.text()
+          console.log(`🔍 TikTok ${approach.name} HTML length:`, html.length)
+          
+          // Strategy 1: Look for clean video cover/poster images first
+          const cleanImagePatterns = [
+            // Video poster/cover images (usually clean without play button)
+            /"poster":\s*"([^"]+)"/,
+            /"cover":\s*"([^"]+)"/,
+            /"videoUrl":\s*"([^"]+)".*?"poster":\s*"([^"]+)"/,
+            // Dynamic video thumbnails in JSON-LD or script tags
+            /"dynamicCover":\s*"([^"]+)"/,
+            /"originCover":\s*"([^"]+)"/,
+            // Alternative image sources
+            /"video":\s*{[^}]*"cover":\s*"([^"]+)"/,
+            /"itemStruct":\s*{[^}]*"video":\s*{[^}]*"cover":\s*"([^"]+)"/
+          ]
+          
+                     for (const pattern of cleanImagePatterns) {
+             const match = html.match(pattern)
+             if (match) {
+               // Get the last capture group (the actual URL)
+               let imageUrl = match[match.length - 1]
+               if (imageUrl) {
+                 // Unescape Unicode characters (e.g., \u002F -> /)
+                 imageUrl = imageUrl.replace(/\\u002F/g, '/')
+                 imageUrl = imageUrl.replace(/\\u003A/g, ':')
+                 imageUrl = imageUrl.replace(/\\u003D/g, '=')
+                 imageUrl = imageUrl.replace(/\\u0026/g, '&')
+                 imageUrl = imageUrl.replace(/\\u003F/g, '?')
+                 
+                 if (imageUrl.startsWith('http')) {
+                   console.log(`✅ TikTok clean thumbnail found via pattern (${approach.name}):`, imageUrl)
+                   return imageUrl
+                 }
+               }
+             }
+           }
+          
+                     // Strategy 2: Try og:image but filter out ones with play button indicators
+           const ogMatch = html.match(/<meta property="og:image" content="([^"]+)"/)
+           if (ogMatch) {
+             let ogImageUrl = ogMatch[1]
+             // Unescape Unicode characters
+             ogImageUrl = ogImageUrl.replace(/\\u002F/g, '/')
+             ogImageUrl = ogImageUrl.replace(/\\u003A/g, ':')
+             ogImageUrl = ogImageUrl.replace(/\\u003D/g, '=')
+             ogImageUrl = ogImageUrl.replace(/\\u0026/g, '&')
+             ogImageUrl = ogImageUrl.replace(/\\u003F/g, '?')
+             
+             // Skip if URL suggests it's a play button overlay image
+             if (!ogImageUrl.includes('play') && !ogImageUrl.includes('overlay') && !ogImageUrl.includes('thumb-play')) {
+               console.log(`✅ TikTok thumbnail found via og:image (${approach.name}):`, ogImageUrl)
+               return ogImageUrl
+             } else {
+               console.log(`⚠️ TikTok og:image appears to have play button overlay, skipping:`, ogImageUrl)
+             }
+           }
+           
+           // Strategy 3: Try twitter:image as fallback
+           const twitterMatch = html.match(/<meta name="twitter:image" content="([^"]+)"/)
+           if (twitterMatch) {
+             let twitterImageUrl = twitterMatch[1]
+             // Unescape Unicode characters
+             twitterImageUrl = twitterImageUrl.replace(/\\u002F/g, '/')
+             twitterImageUrl = twitterImageUrl.replace(/\\u003A/g, ':')
+             twitterImageUrl = twitterImageUrl.replace(/\\u003D/g, '=')
+             twitterImageUrl = twitterImageUrl.replace(/\\u0026/g, '&')
+             twitterImageUrl = twitterImageUrl.replace(/\\u003F/g, '?')
+             
+             console.log(`✅ TikTok thumbnail found via twitter:image (${approach.name}):`, twitterImageUrl)
+             return twitterImageUrl
+           }
+          
+          console.log(`❌ TikTok ${approach.name}: No clean image sources found`)
+        } else {
+          console.log(`❌ TikTok ${approach.name} fetch failed:`, res.status, res.statusText)
+        }
+      } catch (err) { 
+        console.log(`❌ TikTok ${approach.name} error:`, err)
+      }
+    }
+      } else if (platform === 'instagram') {
+    // Instagram: Advanced multi-strategy approach
+    console.log('🔍 Instagram: Attempting advanced thumbnail extraction from:', videoUrl)
+    
+        // Note: Instagram has become very restrictive with external access
+    // We'll focus on basic page scraping and accept that thumbnails may have play button overlays
+    console.log('ℹ️ Instagram restricts external access - attempting basic scraping only')
+    
+    // Strategy 1: Enhanced traditional scraping with more user agents
+    const approaches: Array<{ headers: Record<string, string>; name: string }> = [
+      // Approach 1: Instagram mobile app user agent
+      {
+        name: 'Instagram Mobile App',
+        headers: {
+          'User-Agent': 'Instagram 219.0.0.12.117 Android',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5'
+        }
+      },
+      // Approach 2: WhatsApp user agent (Meta-owned)
+      {
+        name: 'WhatsApp',
+        headers: {
+          'User-Agent': 'WhatsApp/2.21.4.18 A',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      },
+      // Approach 3: Old iOS Safari
+      {
+        name: 'Old iOS Safari',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 12_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.0 Mobile/15E148 Safari/604.1',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5'
+        }
+      },
+      // Approach 4: LinkedIn crawler
+      {
+        name: 'LinkedIn',
+        headers: {
+          'User-Agent': 'LinkedInBot/1.0 (compatible; Mozilla/5.0; +https://www.linkedin.com/)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      },
+      // Approach 5: Pinterest crawler
+      {
+        name: 'Pinterest',
+        headers: {
+          'User-Agent': 'Pinterest/0.2 (+https://www.pinterest.com/)',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+      }
+    ]
+
+    for (const approach of approaches) {
+      try {
+        console.log(`🔍 Instagram: Trying ${approach.name} approach...`)
+        const res = await fetch(videoUrl, { headers: approach.headers })
+        console.log(`🔍 Instagram ${approach.name} response:`, res.status, res.statusText)
+        
+        if (res.ok) {
+          const html = await res.text()
+          console.log(`🔍 Instagram ${approach.name} HTML length:`, html.length)
+          
+          // Try multiple patterns (prioritize clean images)
+          const patterns = [
+            // Strategy 1: Look for specific 360x640 resolution (actual Instagram size)
+            /"src":"([^"]+)"[^}]*"config_width":360[^}]*"config_height":640/,
+            /"src":"([^"]+)"[^}]*"config_width":360/,
+            /"src":"([^"]+)"[^}]*"config_height":640/,
+            // Strategy 2: Look for clean video-specific images
+            /"video_url":"[^"]*".*?"display_url":"([^"]+)"/,
+            /"poster":"([^"]+)"/,
+            /"cover_frame_url":"([^"]+)"/,
+            /"video_versions":\[[^\]]*\].*?"image_versions2":\{[^}]*"candidates":\[[^\]]*\{[^}]*"url":"([^"]+)"/,
+            // Strategy 3: High-quality display images
+            /"display_url":"([^"]+)"/,
+            /"thumbnail_src":"([^"]+)"/,
+            // Strategy 4: Filter og:image and twitter:image for play button indicators
+            /<meta property="og:image" content="([^"]+)"/,
+            /<meta name="twitter:image" content="([^"]+)"/
+          ]
+          
+                    for (const pattern of patterns) {
+            const match = html.match(pattern)
+            if (match) {
+              let thumbnailUrl = match[1]
+              // Unescape Unicode characters
+              thumbnailUrl = thumbnailUrl.replace(/\\u002F/g, '/').replace(/\\u003A/g, ':').replace(/\\u003D/g, '=').replace(/\\u0026/g, '&')
+              // Decode HTML entities
+              thumbnailUrl = thumbnailUrl.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+              
+              if (thumbnailUrl.startsWith('http')) {
+                // Check if this is likely a clean image (for og:image and twitter:image)
+                const isMetaTag = pattern.source.includes('og:image') || pattern.source.includes('twitter:image')
+                if (isMetaTag) {
+                  // Skip if URL suggests it has play button overlay
+                  if (thumbnailUrl.includes('play') || thumbnailUrl.includes('overlay') || 
+                      thumbnailUrl.includes('thumb-play') || thumbnailUrl.includes('video-thumb')) {
+                    console.log(`⚠️ Instagram ${approach.name}: Skipping image with play button overlay:`, thumbnailUrl)
+                    continue
+                  }
+                }
+                
+                console.log(`✅ Instagram thumbnail found via ${approach.name}:`, thumbnailUrl)
+                return thumbnailUrl
+              }
+            }
+          }
+        }
+      } catch (err) {
+        console.log(`❌ Instagram ${approach.name} error:`, err)
+      }
+    }
+  }
+  return null
+}
+
+export async function POST(req: NextRequest) {
+  const body = await req.json() // Only call this ONCE
+  const { url, recipeId, extractThumbnail } = body
+
+  // Instagram thumbnail extraction branch
+  if (extractThumbnail && url && recipeId && url.includes('instagram.com')) {
+    // 1. Fetch the Instagram page
+    const res = await fetch(url)
+    if (!res.ok) {
+      return new Response(JSON.stringify({ error: 'Failed to fetch Instagram page' }), { status: 400 })
+    }
+    const html = await res.text()
+    // 2. Parse og:image meta tag
+    const match = html.match(/<meta property="og:image" content="([^"]+)"/)
+    if (!match) {
+      return new Response(JSON.stringify({ error: 'Could not find thumbnail in Instagram page' }), { status: 400 })
+    }
+    const imageUrl = match[1]
+    // 3. Download the image
+    const imageRes = await fetch(imageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; RecipeBot/1.0; +https://yourdomain.com)',
+        'Referer': url
+      }
+    })
+    if (!imageRes.ok) {
+      // Return the thumbnail URL so the frontend can use it for manual upload
+      return new Response(JSON.stringify({ error: 'Failed to download thumbnail image', thumbnailUrl: imageUrl }), { status: 400 })
+    }
+    const buffer = Buffer.from(await imageRes.arrayBuffer())
+    // 4. Save to uploads dir
+    const ext = imageUrl.split('.').pop()?.split('?')[0] || 'jpg'
+    const filename = `recipe-${recipeId}-instagram-thumb-${Date.now()}.${ext}`
+    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'recipes')
+    await fs.mkdir(uploadDir, { recursive: true })
+    const filePath = path.join(uploadDir, filename)
+    await fs.writeFile(filePath, buffer)
+    const publicUrl = `/uploads/recipes/${filename}`
+    // 5. Update recipe
+    const recipe = await prisma.recipe.update({
+      where: { id: Number(recipeId) },
+      data: { image: publicUrl }
+    })
+    return new Response(JSON.stringify(recipe), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+
+  try {
     // Enhanced request validation
     const validation = validateVideoRequest(body)
     if (!validation.isValid) {
@@ -369,14 +772,18 @@ export async function POST(req: NextRequest) {
           await withTimeout((async () => {
             // Stage 1: Analyzing
             startStage('analyzing')
+            console.log(`🎬 Starting video analysis for URL: ${validatedUrl}`)
+            console.log(`📱 Platform detected: ${platform}`)
             sendJSON(createProgressResponse('analyzing', platform ? getPlatformDisplayName(platform) : undefined))
             
             // Extract video metadata with timeout
+            console.log('🔍 Extracting video metadata...')
             const metadata = await withTimeout(
               extractVideoMetadata(validatedUrl),
               10000,
               'Metadata extraction timed out'
             )
+            console.log('📊 Video metadata extracted:', metadata)
             endStage('analyzing', true)
             
             // Process video with temporary session
@@ -384,6 +791,7 @@ export async function POST(req: NextRequest) {
               try {
                 // Stage 2: Downloading with timeout
                 startStage('downloading')
+                console.log('⬇️  Starting video download and audio extraction...')
                 sendJSON(createProgressResponse('downloading'))
                 
                 // Extract audio from video with timeout
@@ -392,21 +800,24 @@ export async function POST(req: NextRequest) {
                     const args = [
                       validatedUrl,
                       '--extract-audio',
-                      '--audio-format', 'wav',
+                      '--audio-format', 'mp3',
                       '--audio-quality', '5',
-                      '--output', paths.audioPath.replace('.wav', '.%(ext)s'),
+                      '--output', paths.audioPath.replace('.mp3', '.%(ext)s'),
                       '--no-playlist',
                       '--no-warnings',
                       '--user-agent', 'Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36',
-                      '--postprocessor-args', 'ffmpeg:-ar 16000'
+                      '--postprocessor-args', 'ffmpeg:-ar 16000 -ac 1'
                     ]
 
+                    console.log('🔧 Running yt-dlp with args:', args)
                     const child = spawn('yt-dlp', args)
                     
                     child.on('close', (code) => {
+                      console.log(`📥 yt-dlp process completed with code: ${code}`)
                       if (code !== 0) {
                         reject(new Error('Video download failed'))
                       } else {
+                        console.log('✅ Video download and audio extraction successful')
                         resolve()
                       }
                     })
@@ -422,6 +833,7 @@ export async function POST(req: NextRequest) {
                 
                 // Stage 3: Transcribing with timeout
                 startStage('transcribing')
+                console.log('🎤 Starting audio transcription...')
                 sendJSON(createProgressResponse('transcribing'))
                 
                 // Transcribe audio to text with timeout
@@ -431,7 +843,11 @@ export async function POST(req: NextRequest) {
                   'Audio transcription timed out'
                 )
                 
+                console.log('📝 Transcription result (first 500 chars):', transcription.substring(0, 500))
+                console.log('📏 Transcription length:', transcription.length)
+                
                 if (!transcription.trim()) {
+                  console.log('❌ No speech detected in video')
                   endStage('transcribing', false, 'No speech detected')
                   throw new Error('No speech detected in video')
                 }
@@ -442,6 +858,7 @@ export async function POST(req: NextRequest) {
                 
                 // Stage 4: Structuring with timeout
                 startStage('structuring')
+                console.log('🧠 Starting recipe structuring with AI...')
                 sendJSON(createProgressResponse('structuring'))
                 
                 // Structure recipe using AI with timeout
@@ -450,8 +867,33 @@ export async function POST(req: NextRequest) {
                   60000,
                   'Recipe structuring timed out'
                 )
-                endStage('structuring', true)
                 
+                console.log('📋 Structured recipe data:', JSON.stringify(structuredData, null, 2))
+                endStage('structuring', true)
+
+                // Get LLM tag suggestions
+                let suggestedTags: string[] = []
+                let suggestedTagsRaw: string = ''
+                try {
+                  console.log('🏷️  Getting tag suggestions...')
+                  const tagResults = await getRecipeTagSuggestions({
+                    title: structuredData.title || '',
+                    ingredients: structuredData.rawIngredients || [],
+                    instructions: Array.isArray(structuredData.instructions)
+                      ? structuredData.instructions.map((step: any) => step.text || '').join(' ')
+                      : (structuredData.instructions || '')
+                  })
+                  suggestedTags = tagResults.tags || []
+                  suggestedTagsRaw = tagResults.raw || ''
+                  console.log('🏷️  Tag suggestions:', suggestedTags)
+                  console.log('📄 Raw tag response:', suggestedTagsRaw)
+                } catch (err) {
+                  console.log('⚠️  Tag suggestion failed:', err)
+                  // If tag suggestion fails, continue without blocking import
+                  suggestedTags = []
+                  suggestedTagsRaw = ''
+                }
+
                 // Prepare final response data
                 const extractedData: ExtractedRecipeData = {
                   title: structuredData.title,
@@ -465,59 +907,56 @@ export async function POST(req: NextRequest) {
                     platform: platform as 'instagram' | 'tiktok' | 'youtube',
                     videoId: undefined, // TODO: Extract from validator
                     extractedAt: new Date().toISOString()
-                  }
+                  },
+                  suggestedTags,
+                  suggestedTagsRaw
                 }
 
                 // Calculate processing time
                 stats.endTime = Date.now()
                 stats.duration = stats.endTime - stats.startTime
+                console.log(`⏱️  Total processing time: ${stats.duration}ms`)
+                console.log('📊 Processing statistics:', stats)
                 
-                // Save to database using existing schema
-                let savedRecipe
-                try {
-                  savedRecipe = await withTimeout(
-                    prisma.recipe.create({
-                      data: {
-                        title: structuredData.title || 'Untitled Video Recipe',
-                        summary: `Video recipe from ${getPlatformDisplayName(platform!)} - ${validatedUrl}`,
-                        instructions: structuredData.instructions || '',
-                        rawIngredients: JSON.stringify(structuredData.rawIngredients || []),
-                        tags: JSON.stringify([
-                          'video-import',
-                          platform!,
-                          {
-                            sourceUrl: validatedUrl,
-                            transcription: transcription.substring(0, 1000), // Truncate for storage
-                            extractedAt: new Date().toISOString(),
-                            platform: platform!,
-                            processingTime: stats.duration
-                          }
-                        ]),
-                        startSeason: 1, // Default to all year
-                        endSeason: 12,
-                        grade: 0, // Default grade
-                        time: 0 // Default time - could be extracted from transcription later
-                      },
-                      include: { ingredients: true }
-                    }),
-                    5000,
-                    'Database save timed out'
-                  )
-                } catch (dbError) {
-                  console.error('Database save error:', dbError)
-                  // Continue with response even if save fails, but include warning
-                  extractedData.metadata = {
-                    ...extractedData.metadata!,
-                    recipeId: undefined
+                // --- Task 3.2: Fetch default platform thumbnail for review dialog ---
+                let thumbnailCandidateUrl: string | null = null
+                console.log('🔍 About to call getDefaultThumbnailUrl with:', { validatedUrl, platform })
+                const thumbnailUrl = await getDefaultThumbnailUrl(validatedUrl, platform!)
+                console.log('📸 getDefaultThumbnailUrl returned:', thumbnailUrl)
+                console.log('Attempting to fetch thumbnailUrl:', thumbnailUrl)
+                if (thumbnailUrl) {
+                  // For review dialog, we just need the URL - don't need to download it yet
+                  thumbnailCandidateUrl = thumbnailUrl
+                  console.log('✅ Thumbnail URL ready for review dialog:', thumbnailCandidateUrl)
+                  
+                  // Optional: Test if we can fetch it (for logging purposes)
+                  try {
+                    const imgRes = await fetch(thumbnailUrl)
+                    if (!imgRes.ok) {
+                      console.log('ℹ️ Note: Thumbnail URL found but cannot be fetched directly (CORS):', imgRes.status, imgRes.statusText)
+                    } else {
+                      console.log('✅ Thumbnail URL is directly fetchable')
+                    }
+                  } catch (err) {
+                    console.log('ℹ️ Note: Thumbnail URL found but cannot be fetched directly (CORS):', err)
                   }
                 }
-
-                // Include saved recipe ID in response if successful
-                if (savedRecipe) {
-                  extractedData.metadata!.recipeId = savedRecipe.id
+                
+                // Add candidateImages if thumbnailCandidateUrl exists
+                console.log('🔍 Debug: thumbnailCandidateUrl =', thumbnailCandidateUrl)
+                if (thumbnailCandidateUrl) {
+                  console.log('Adding candidateImages:', thumbnailCandidateUrl)
+                  extractedData.candidateImages = [thumbnailCandidateUrl]
+                  console.log('✅ extractedData.candidateImages set to:', extractedData.candidateImages)
+                } else {
+                  console.log('❌ No thumbnailCandidateUrl, candidateImages will be undefined')
                 }
-
-                const warnings = savedRecipe ? [] : ['Recipe data extracted successfully but failed to save to database']
+                
+                console.log('Final extractedData before sendJSON:', extractedData)
+                console.log('Final extractedData.candidateImages:', extractedData.candidateImages)
+                
+                // Send response for user review - no database save yet
+                const warnings: string[] = []
                 sendJSON(createSuccessResponse(extractedData, stats.duration, warnings))
                 
               } catch (error: any) {

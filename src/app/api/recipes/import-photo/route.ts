@@ -1,69 +1,42 @@
 import { NextRequest } from "next/server";
-import { Ollama } from "ollama";
-import { spawn } from "child_process";
+import { Anthropic } from "@anthropic-ai/sdk";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { getRecipeTagSuggestions } from '@/lib/ai-client'
 
-const getPrompt = (text: string) => `
-You are an expert recipe parser. Your task is to analyze the following text, which was extracted from a recipe photo via OCR, and convert it into a structured JSON object.
+// Initialize Anthropic client
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
 
-The text might be messy and contain formatting errors from the OCR process. Do your best to interpret it.
+const getRecipeExtractionPrompt = () => `
+You are an expert recipe analyzer. Your task is to extract a complete recipe from the provided image.
 
-Follow these rules:
-1.  Identify the recipe's title. It's usually at the top and in a larger font.
-2.  Identify the list of ingredients. They are often in a list or a column. Return them as an array of strings in the 'rawIngredients' field.
-3.  Identify the preparation instructions. This is typically the main body of text. Return it as a single string in the 'instructions' field.
-4.  The output MUST be a valid JSON object. Do not include any text, notes, or explanations outside of the JSON object itself.
+Please analyze the image and extract the following information in a structured JSON format:
 
-Here is an example of the expected output format:
+1. **Title**: The recipe name/title
+2. **Ingredients**: A complete list of ingredients with quantities and measurements
+3. **Instructions**: Step-by-step cooking instructions
+4. **Confidence**: Rate your confidence in the extraction (1-10, where 10 is very confident)
+
+IMPORTANT RULES:
+- Only extract information that is clearly visible in the image
+- If you cannot see certain information clearly, mark it as "unclear" or "not visible"
+- Be precise with measurements and quantities
+- Maintain the original language of the recipe
+- If the image is blurry, unclear, or doesn't contain a recipe, indicate this clearly
+
+Return ONLY a valid JSON object in this format:
 {
-  "title": "Example Title",
-  "rawIngredients": [
-    "1 cup flour",
-    "2 eggs",
-    "1/2 tsp salt"
-  ],
-  "instructions": "Step 1: Mix all ingredients. Step 2: Bake at 350°F for 30 minutes."
+  "title": "Recipe Title",
+  "rawIngredients": ["ingredient 1", "ingredient 2", "..."],
+  "instructions": "Step-by-step instructions...",
+  "confidence": 8,
+  "imageQuality": "good/medium/poor",
+  "notes": "Any additional observations about the image or extraction"
 }
-
-Here is the OCR text to parse:
----
-${text}
----
 `;
-
-const runOcrScript = (imagePath: string): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const scriptPath = path.join(process.cwd(), "scripts", "ocr.js");
-    const child = spawn("node", [scriptPath, imagePath]);
-
-    let output = "";
-    let errorOutput = "";
-
-    child.stdout.on("data", (data) => {
-      output += data.toString();
-    });
-
-    child.stderr.on("data", (data) => {
-      errorOutput += data.toString();
-    });
-
-    child.on("close", (code) => {
-      if (code !== 0) {
-        console.error(`OCR script exited with code ${code}: ${errorOutput}`);
-        reject(new Error(`OCR process failed.`));
-      } else {
-        resolve(output);
-      }
-    });
-
-    child.on("error", (err) => {
-      console.error("Failed to start OCR script.", err);
-      reject(err);
-    });
-  });
-};
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -76,8 +49,18 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Check if Anthropic API key is available
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return new Response(JSON.stringify({ 
+      error: "Anthropic API key not configured. Please set ANTHROPIC_API_KEY environment variable." 
+    }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const imageBuffer = Buffer.from(await file.arrayBuffer());
-  const tempFilePath = path.join(os.tmpdir(), `ocr-temp-${Date.now()}-${file.name}`);
+  const tempFilePath = path.join(os.tmpdir(), `recipe-import-${Date.now()}-${file.name}`);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -89,42 +72,164 @@ export async function POST(req: NextRequest) {
       try {
         await fs.writeFile(tempFilePath, imageBuffer);
 
-        sendJSON({ status: "Reading recipe text..." });
-        const text = await runOcrScript(tempFilePath);
-        console.log("Extracted text:", text);
+        sendJSON({ status: "Analyzing recipe image..." });
         
-        sendJSON({ status: "Formatting recipe..." });
-        const ollama = new Ollama();
-        const response = await ollama.chat({
-          model: "mistral:7b-instruct",
-          messages: [{ role: "user", content: getPrompt(text) }],
-          format: "json",
-          stream: false,
+        // Use Anthropic's Vision API to analyze the image
+        const response = await anthropic.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: getRecipeExtractionPrompt()
+                },
+                {
+                  type: "image",
+                  source: {
+                    type: "base64",
+                    media_type: "image/jpeg",
+                    data: imageBuffer.toString('base64')
+                  }
+                }
+              ]
+            }
+          ]
         });
 
+        sendJSON({ status: "Processing extracted data..." });
+        
         let structuredData;
         try {
-          structuredData = JSON.parse(response.message.content);
+          // Extract JSON from the response
+          const content = response.content[0];
+          if (content.type === 'text') {
+            const textContent = content as { type: 'text'; text: string };
+            const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              structuredData = JSON.parse(jsonMatch[0]);
+            } else {
+              throw new Error('No JSON found in response');
+            }
+          } else {
+            throw new Error('Unexpected response format');
+          }
         } catch (jsonError) {
-          console.log("Failed to parse JSON, attempting to repair...");
-          const repairResponse = await ollama.chat({
-            model: "mistral:7b-instruct", // Or a more powerful model if available
+          console.log("Failed to parse JSON from Anthropic response:", jsonError);
+          console.log("Raw response:", response.content[0]);
+          
+          // Try to repair the JSON
+          sendJSON({ status: "Repairing data format..." });
+          
+          const content = response.content[0];
+          const textContent = content.type === 'text' ? content as { type: 'text'; text: string } : null;
+          const textToRepair = textContent?.text || 'No text content available';
+          
+          const repairResponse = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 2000,
             messages: [
               {
                 role: "user",
-                content: `The following JSON is malformed. Please fix it and return only the corrected JSON object. Do not add any commentary.\n\n${response.message.content}`,
-              },
-            ],
-            format: "json",
-            stream: false,
+                content: `The following text contains a recipe but the JSON is malformed. Please extract the recipe information and return only a valid JSON object in this format:
+{
+  "title": "Recipe Title",
+  "rawIngredients": ["ingredient 1", "ingredient 2"],
+  "instructions": "Step-by-step instructions",
+  "confidence": 5,
+  "imageQuality": "poor",
+  "notes": "Extraction was difficult due to poor image quality"
+}
+
+Text to repair:
+${textToRepair}`
+              }
+            ]
           });
-          structuredData = JSON.parse(repairResponse.message.content);
+          
+          const repairContent = repairResponse.content[0];
+          if (repairContent.type === 'text') {
+            const repairTextContent = repairContent as { type: 'text'; text: string };
+            const jsonMatch = repairTextContent.text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              structuredData = JSON.parse(jsonMatch[0]);
+            } else {
+              throw new Error('Could not extract valid JSON from repair attempt');
+            }
+          }
         }
         
-        sendJSON({ status: "done", data: structuredData });
+        // Validate the extracted data
+        if (!structuredData || !structuredData.title) {
+          throw new Error('Could not extract recipe title from image');
+        }
+        
+        // Get LLM tag suggestions using Anthropic API
+        let suggestedTags: string[] = [];
+        let suggestedTagsRaw: string = '';
+        try {
+          console.log('Attempting to get tag suggestions for recipe:', structuredData.title);
+          const tagResults = await getRecipeTagSuggestions({
+            title: structuredData.title || '',
+            ingredients: structuredData.rawIngredients || [],
+            instructions: structuredData.instructions || ''
+          });
+          console.log('Tag suggestion results:', tagResults);
+          suggestedTags = tagResults.tags || [];
+          suggestedTagsRaw = tagResults.raw || '';
+          
+          if (suggestedTags.length === 0) {
+            console.log('No tags suggested by Anthropic API');
+          }
+        } catch (err) {
+          console.error('Error getting tag suggestions:', err);
+          suggestedTags = [];
+          suggestedTagsRaw = '';
+        }
+        
+        // Fallback: Use simple pattern matching if no LLM suggestions
+        if (suggestedTags.length === 0) {
+          console.log('Using fallback tag suggestions based on pattern matching');
+          const { extractTagCategories } = await import('@/lib/tag-utils');
+          const fallbackTags = extractTagCategories({
+            title: structuredData.title || '',
+            ingredients: structuredData.rawIngredients || [],
+            instructions: structuredData.instructions || ''
+          });
+          suggestedTags = fallbackTags;
+          console.log('Fallback tags suggested:', fallbackTags);
+        }
+        
+        // Add metadata about the extraction
+        structuredData.suggestedTags = suggestedTags;
+        structuredData.suggestedTagsRaw = suggestedTagsRaw;
+        structuredData.extractionMethod = 'anthropic-vision';
+        structuredData.confidence = structuredData.confidence || 5;
+        structuredData.imageQuality = structuredData.imageQuality || 'unknown';
+        
+        // Add warning if confidence is low
+        if (structuredData.confidence < 6) {
+          structuredData.notes = (structuredData.notes || '') + ' [Low confidence extraction - please review carefully]';
+        }
+
+        // Send only the fields expected by ImportedRecipe type
+        const recipeData = {
+          title: structuredData.title,
+          rawIngredients: structuredData.rawIngredients || [],
+          instructions: structuredData.instructions || '',
+          suggestedTags: structuredData.suggestedTags || []
+        };
+
+        console.log('Sending final recipe data:', recipeData);
+        sendJSON({ status: "done", data: recipeData });
       } catch (error) {
         console.error("Error processing photo import:", error);
-        sendJSON({ status: 'error', error: 'Failed to process the recipe.' });
+        sendJSON({ 
+          status: 'error', 
+          error: error instanceof Error ? error.message : 'Failed to process the recipe image.' 
+        });
       } finally {
         controller.close();
         // Clean up the temporary file

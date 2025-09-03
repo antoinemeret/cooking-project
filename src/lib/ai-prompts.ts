@@ -2,6 +2,8 @@
  * Specialized system prompts for different recipe recommendation scenarios
  */
 
+export const TAG_SUGGESTION_PROMPT = `You are an expert recipe tagging assistant. Given a recipe's title, ingredients, and instructions, analyze the content and return a concise list of relevant tags. Tags should include dietary categories (e.g., vegan, gluten-free), cuisine (e.g., Italian, Mediterranean), meal type (e.g., dinner, snack), and any other useful descriptors. Return only a JSON array of strings, no explanations or extra text.`
+
 export const BASE_RECIPE_ASSISTANT_PROMPT = `You are a helpful conversational recipe planning assistant. Your role is to help users plan their meals by suggesting recipes from their personal collection based on their preferences and needs.
 
 ## Core Guidelines:

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import * as cheerio from 'cheerio'
 import { parseTraditional, isRecipeDataMeaningful } from '@/lib/scrapers/traditional-parser'
+import { getRecipeTagSuggestions } from '@/lib/ai-client'
 
 async function extractRecipeWithLLM(prompt: any) {
   let output = ''
@@ -130,6 +131,32 @@ export async function POST(req: NextRequest) {
     }
 
     const html = await htmlRes.text()
+    // --- Extract candidate images ---
+    const $ = cheerio.load(html)
+    const images: string[] = []
+    // 1. og:image
+    const ogImage = $('meta[property="og:image"]').attr('content')
+    if (ogImage) images.push(ogImage)
+    // 2. Prominent <img> tags (header, hero, first in article)
+    $('img').each((i, el) => {
+      if (images.length >= 3) return false
+      const src = $(el).attr('src')
+      if (src && !images.includes(src)) {
+        // Make absolute if needed
+        let abs = src
+        if (src.startsWith('//')) abs = 'https:' + src
+        else if (src.startsWith('/')) {
+          const u = new URL(url)
+          abs = u.origin + src
+        } else if (!src.startsWith('http')) {
+          const u = new URL(url)
+          abs = u.origin + '/' + src
+        }
+        images.push(abs)
+      }
+    })
+    // Only keep top 3
+    const topImages = images.slice(0, 3)
     
     // Try traditional parser first
     console.log('Attempting traditional parsing first...')
@@ -139,7 +166,7 @@ export async function POST(req: NextRequest) {
       console.log('Traditional parsing successful, using structured data')
       
       // Convert traditional parser result to expected format
-      const recipe = {
+      const recipe: any = {
         title: traditionalResult.recipe.title || "Recipe",
         rawIngredients: traditionalResult.recipe.ingredients || [],
         instructions: traditionalResult.recipe.instructions?.join('\n\n') || traditionalResult.recipe.summary || "",
@@ -148,19 +175,47 @@ export async function POST(req: NextRequest) {
         processingTime: traditionalResult.processingTime
       }
       
+      // Get LLM tag suggestions
+      try {
+        const tagResults = await getRecipeTagSuggestions({
+          title: recipe.title,
+          ingredients: recipe.rawIngredients,
+          instructions: recipe.instructions
+        })
+        recipe.suggestedTags = tagResults.claude?.tags || []
+        recipe.suggestedTagsRaw = tagResults.claude?.raw || ''
+      } catch (err) {
+        recipe.suggestedTags = []
+        recipe.suggestedTagsRaw = ''
+      }
+      
       console.log('API response (traditional):', recipe)
-      return NextResponse.json({ recipe })
+      return NextResponse.json({ recipe, images: topImages })
     }
     
     // Fall back to LLM if traditional parsing failed or returned insufficient data
     console.log('Traditional parsing failed or insufficient data, falling back to LLM...')
-    const recipe = await callLLM(html, url)
+    const recipe: any = await callLLM(html, url)
     
     // Add fallback indicator
     recipe.parsingMethod = 'llm-fallback'
     
+    // Get LLM tag suggestions
+    try {
+      const tagResults = await getRecipeTagSuggestions({
+        title: recipe.title,
+        ingredients: recipe.rawIngredients,
+        instructions: recipe.instructions
+      })
+      recipe.suggestedTags = tagResults.claude?.tags || []
+      recipe.suggestedTagsRaw = tagResults.claude?.raw || ''
+    } catch (err) {
+      recipe.suggestedTags = []
+      recipe.suggestedTagsRaw = ''
+    }
+    
     console.log('API response (LLM fallback):', recipe)
-    return NextResponse.json({ recipe })
+    return NextResponse.json({ recipe, images: topImages })
     
   } catch (err) {
     console.error('API /api/scrape error:', err)

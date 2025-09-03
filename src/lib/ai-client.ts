@@ -2,6 +2,7 @@ import { ChatAnthropic } from '@langchain/anthropic'
 import { HumanMessage, SystemMessage, AIMessage } from '@langchain/core/messages'
 import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts'
 import { PerformanceMonitor } from './performance-utils'
+import { TAG_SUGGESTION_PROMPT } from './ai-prompts'
 
 // Claude Sonnet 4 model configuration
 const CLAUDE_MODEL = 'claude-3-5-sonnet-20241022'
@@ -612,5 +613,59 @@ export async function generateManualResetSuggestions(): Promise<string[]> {
       "Use the meal planner directly",
       "Try again later"
     ]
+  }
+}
+
+async function callAnthropicTagSuggestion(recipe: { title: string, ingredients: string[], instructions: string }) {
+  const { getDynamicTagSuggestionPrompt } = await import('./tag-utils')
+  const dynamicPrompt = await getDynamicTagSuggestionPrompt()
+  
+  const { Anthropic } = await import('@anthropic-ai/sdk')
+  const anthropic = new Anthropic({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+  })
+  
+      const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1000,
+    messages: [
+      {
+        role: "user",
+        content: `${dynamicPrompt}\n\nTitle: ${recipe.title}\nIngredients: ${recipe.ingredients.join(', ')}\nInstructions: ${recipe.instructions}`
+      }
+    ]
+  })
+  
+  const content = response.content[0]
+  if (content.type === 'text') {
+    return content.text
+  }
+  return ''
+}
+
+export async function getRecipeTagSuggestions(
+  recipe: { title: string, ingredients: string[], instructions: string }
+): Promise<{ tags: string[], raw: string, error?: string }> {
+  try {
+    const responseText = await callAnthropicTagSuggestion(recipe)
+    let tags: string[] = []
+    
+    try {
+      // Try to parse as JSON array
+      tags = JSON.parse(responseText)
+    } catch (err) {
+      // Try to extract JSON array from response
+      const match = responseText.match(/\[[\s\S]*?\]/)
+      if (match) {
+        tags = JSON.parse(match[0])
+      } else {
+        throw new Error('Could not parse tags from response')
+      }
+    }
+    
+    return { tags, raw: responseText }
+  } catch (err: any) {
+    console.error('Error getting tag suggestions from Anthropic:', err)
+    return { tags: [], raw: '', error: err.message || 'Unknown error' }
   }
 } 

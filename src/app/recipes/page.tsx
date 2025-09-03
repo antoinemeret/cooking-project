@@ -20,10 +20,9 @@ export default function RecipesPage() {
     setLoading(false)
   }
 
-  async function handleRefresh() {
+  function handleRefresh() {
     setRefreshing(true)
-    await fetchRecipes()
-    setRefreshing(false)
+    fetchRecipes().finally(() => setRefreshing(false))
   }
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -92,7 +91,7 @@ export default function RecipesPage() {
       )}
       
       <h1 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4">Recipes</h1>
-      <DataTable recipes={recipes} onRefresh={fetchRecipes} loading={loading || refreshing} />
+      <DataTable recipes={recipes} onRefresh={handleRefresh} loading={loading || refreshing} />
     </div>
   )
 }

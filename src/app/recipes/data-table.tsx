@@ -28,18 +28,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog'
-import { toast } from "sonner"
+import { Sheet, SheetContent, SheetTitle, SheetClose } from '@/components/ui/sheet'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { toast } from 'sonner'
 import { detectVideoUrl, getPlatformDisplayName } from "@/lib/video-url-detector"
 import { VideoProgressTracker, VideoProcessingProgress, VideoProcessingStage } from "@/components/recipes/VideoProgressTracker"
 import { ExtractedRecipeData, VideoPlatform } from "@/types/video-import"
+import { TagInput, TagSuggestion } from "@/components/ui/tag-input"
+import { XIcon } from 'lucide-react'
+import { CalendarPlus, CheckCircle2, Pencil, Trash2, Upload } from 'lucide-react'
 
 type ImportedRecipe = {
   id?: number
   title: string
   rawIngredients: string[]
   instructions: string
+  tags?: string[]
   // Video-specific metadata
   sourceUrl?: string
   transcription?: string
@@ -49,6 +54,8 @@ type ImportedRecipe = {
     duration?: number
     extractedAt: string
   }
+  suggestedTags?: string[]
+  candidateImages?: string[] // Added for image picker
 }
 
 export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], onRefresh: () => void, loading: boolean }) {
@@ -71,17 +78,92 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
   // Video processing progress state
   const [videoProgress, setVideoProgress] = useState<VideoProcessingProgress | null>(null)
   const [isVideoProcessing, setIsVideoProcessing] = useState(false)
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [editFields, setEditFields] = useState<{ title: string; rawIngredients: string; instructions: string }>({ title: '', rawIngredients: '', instructions: '' })
+  const [tagUpdateError, setTagUpdateError] = useState<string | null>(null)
+  const [isUpdatingTags, setIsUpdatingTags] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const titleInputRef = useRef<HTMLInputElement>(null)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [isUnsavedChangesDialogOpen, setIsUnsavedChangesDialogOpen] = useState(false)
+  const [isAddingToPlanner, setIsAddingToPlanner] = useState(false)
+  const [isUrlInputDialogOpen, setIsUrlInputDialogOpen] = useState(false)
 
-  const openReviewDialog = (recipe: ImportedRecipe) => {
-    setImportedRecipe(recipe)
-    setIsManualMode(false)
-    setIsImportDialogOpen(true)
-  }
+  // Track planned recipes for disabling add button
+  const [plannedRecipeIds, setPlannedRecipeIds] = useState<number[]>([])
+
+  // Fetch meal plan on mount and when refreshed
+  useEffect(() => {
+    async function fetchMealPlan() {
+      try {
+        const res = await fetch('/api/planner?userId=user123')
+        if (!res.ok) return
+        const data = await res.json()
+        const ids = (data.mealPlan?.plannedRecipes || []).map((pr: any) => pr.recipeId)
+        setPlannedRecipeIds(ids)
+      } catch (err) {
+        // ignore
+      }
+    }
+    fetchMealPlan()
+  }, [onRefresh])
+
+  // Remove openReviewDialog; use setImportedRecipe and setIsImportDialogOpen only after successful import
 
   const handlePhotoImportClick = () => {
     photoInputRef.current?.click()
   }
 
+  const handleRecipeTagsChange = async (recipeId: number, newTags: string[]) => {
+    setIsUpdatingTags(true)
+    setTagUpdateError(null)
+    
+    try {
+      const response = await fetch(`/api/recipes/${recipeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags: JSON.stringify(newTags) }),
+      })
+      
+      if (response.ok) {
+        // Update the local recipe state
+        setSelectedRecipe(prev => prev ? { ...prev, tags: JSON.stringify(newTags) } : null)
+        // Refresh the recipe list
+        onRefresh()
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || 'Failed to update recipe tags'
+        setTagUpdateError(errorMessage)
+        console.error('Failed to update recipe tags:', errorMessage)
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Network error while updating tags'
+      setTagUpdateError(errorMessage)
+      console.error('Error updating recipe tags:', error)
+    } finally {
+      setIsUpdatingTags(false)
+    }
+  }
+
+  // --- Robustified dialog state management for import flow ---
+
+  // 1. Add a helper to reset all import-related state
+  function resetImportState() {
+    setImportedRecipe(null)
+    setIsImportDialogOpen(false)
+    setIsManualMode(false)
+    setImportUrl('')
+    setImportError('')
+    setIsImporting(false)
+    setVideoProgress(null)
+    setIsVideoProcessing(false)
+  }
+
+  // 2. Update handleUrlImport to only open review dialog on success, and always reset state on failure
   const handleUrlImport = async () => {
     if (!importUrl) return
     setIsImporting(true)
@@ -89,16 +171,58 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
 
     // Detect if this is a video URL
     const videoDetection = detectVideoUrl(importUrl)
-    
+    let success = false
+    let newRecipe: ImportedRecipe | null = null
     if (videoDetection.isVideoUrl) {
-      // Handle video URL with streaming response
-      await handleVideoUrlImport(importUrl, videoDetection.platform)
+      const videoRecipe = await handleVideoUrlImport(importUrl, videoDetection.platform)
+      success = !!videoRecipe
+      newRecipe = videoRecipe
     } else {
-      // Handle regular URL with existing scraping logic
-      await handleRegularUrlImport(importUrl)
+      // Patch: handleRegularUrlImport returns the new recipe
+      const result = await handleRegularUrlImportWithReturn(importUrl)
+      success = result.success
+      newRecipe = result.recipe
+    }
+    setIsImporting(false)
+    if (success && newRecipe) {
+      setImportedRecipe(newRecipe)
+      setIsUrlInputDialogOpen(false)
+      setIsImportDialogOpen(true)
+    } else {
+      // On failure, reset all import state and keep dialogs closed
+      resetImportState()
     }
   }
 
+  // Add a patched version of handleRegularUrlImport that returns the new recipe
+  async function handleRegularUrlImportWithReturn(url: string): Promise<{ success: boolean, recipe: ImportedRecipe | null }> {
+    setImportStatus("Scraping URL...")
+    let importSuccess = false
+    let newRecipe: ImportedRecipe | null = null
+    try {
+      const res = await fetch(`/api/scrape`, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      })
+      if (res.ok) {
+        const apiResponse = await res.json()
+        const { recipe, images } = apiResponse
+        newRecipe = { ...recipe, candidateImages: images }
+        importSuccess = true
+      } else {
+        setImportError("Could not import recipe from URL.")
+      }
+    } catch (err) {
+      setImportError("An error occurred while importing from URL.")
+    } finally {
+      setIsImporting(false)
+      setImportStatus("Add new")
+    }
+    return { success: importSuccess, recipe: newRecipe }
+  }
+
+  // Update handleVideoUrlImport to return the new recipe object directly
   const handleVideoUrlImport = async (url: string, platform: any) => {
     const platformName = getPlatformDisplayName(platform)
     
@@ -112,6 +236,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
     })
     setImportStatus(`Processing ${platformName} video...`)
     
+    let videoRecipe: ImportedRecipe | null = null
     try {
       const response = await fetch('/api/recipes/import-video', {
         method: 'POST',
@@ -174,7 +299,9 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
             if (eventData.status === 'done' && eventData.data) {
               // Convert video import response to expected format with metadata
               const videoRecipeData: ExtractedRecipeData = eventData.data
-              const videoRecipe: ImportedRecipe = {
+              console.log('🎬 Video import response data:', videoRecipeData)
+              console.log('🖼️ Candidate images from backend:', videoRecipeData.candidateImages)
+              videoRecipe = {
                 title: videoRecipeData.title,
                 rawIngredients: videoRecipeData.rawIngredients || [],
                 instructions: videoRecipeData.instructions || '',
@@ -188,8 +315,11 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                 } : {
                   platform: platform.toLowerCase() as VideoPlatform,
                   extractedAt: new Date().toISOString()
-                }
+                },
+                suggestedTags: videoRecipeData.suggestedTags || [],
+                candidateImages: videoRecipeData.candidateImages || [] // Add candidate images
               }
+              console.log('🍽️ Final videoRecipe object:', videoRecipe)
               
               // Final success state
               setVideoProgress({
@@ -199,19 +329,11 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
                 timestamp: Date.now()
               })
               
-              openReviewDialog(videoRecipe)
-              setImportStatus('Video processed successfully!')
               break
             }
 
             if (eventData.status === 'error') {
-              setVideoProgress({
-                stage: 'error',
-                error: eventData.error || 'Video processing failed',
-                platform: platformName,
-                timestamp: Date.now()
-              })
-              throw new Error(eventData.error || 'Video processing failed')
+              setImportError(eventData.error || 'Video import failed')
             }
           } catch (parseError) {
             // Ignore JSON parsing errors for partial chunks
@@ -233,7 +355,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       setImportError(errorMessage)
       setImportStatus('Video processing failed')
     } finally {
-      setIsImporting(false)
+      setIsVideoProcessing(false)
       // Clear video processing state after a delay
       setTimeout(() => {
         setIsVideoProcessing(false)
@@ -241,11 +363,13 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
         setImportStatus("Add new")
       }, 3000)
     }
+    return videoRecipe
   }
 
   const handleRegularUrlImport = async (url: string) => {
     setImportStatus("Scraping URL...")
     
+    let importSuccess = false
     try {
       const res = await fetch(`/api/scrape`, {
         method: "POST",
@@ -254,7 +378,8 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       })
       if (res.ok) {
         const { recipe: newRecipe } = await res.json()
-        openReviewDialog(newRecipe)
+        setImportedRecipe(newRecipe)
+        importSuccess = true
       } else {
         setImportError("Could not import recipe from URL.")
       }
@@ -264,6 +389,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       setIsImporting(false)
       setImportStatus("Add new")
     }
+    return importSuccess
   }
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -299,7 +425,9 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
         }
 
         if (eventData.status === "done") {
-          openReviewDialog(eventData.data as ImportedRecipe)
+          setImportedRecipe(eventData.data as ImportedRecipe)
+          setIsImportDialogOpen(true)
+          setIsManualMode(false)
           setImportStatus("Done!")
         }
 
@@ -308,7 +436,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
             action: {
               label: "Import Manually",
               onClick: () => {
-                setImportedRecipe({ title: "", rawIngredients: [], instructions: "" })
+                setImportedRecipe({ title: "", rawIngredients: [], instructions: "", tags: [] })
                 setIsManualMode(true)
                 setIsImportDialogOpen(true)
               },
@@ -321,7 +449,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
         action: {
           label: "Import Manually",
           onClick: () => {
-            setImportedRecipe({ title: "", rawIngredients: [], instructions: "" })
+            setImportedRecipe({ title: "", rawIngredients: [], instructions: "", tags: [] })
             setIsManualMode(true)
             setIsImportDialogOpen(true)
           },
@@ -329,7 +457,106 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       })
     } finally {
       setIsImporting(false)
-      setTimeout(() => setImportStatus("Add new"), 3000)
+      setImportStatus("Add new")
+    }
+  }
+
+  const handleSave = async () => {
+    if (!selectedRecipe) return
+
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      // Prepare the data to send
+      const updateData = {
+        title: editFields.title,
+        rawIngredients: editFields.rawIngredients.split('\n').filter(line => line.trim()),
+        instructions: editFields.instructions
+      }
+
+      // Call the API to update the recipe
+      const response = await fetch(`/api/recipes/${selectedRecipe.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || 'Failed to save recipe'
+        throw new Error(errorMessage)
+      }
+
+      const { recipe: updatedRecipe } = await response.json()
+
+      // Optimistically update the selected recipe
+      setSelectedRecipe(updatedRecipe)
+
+      // Exit edit mode
+      setIsEditMode(false)
+
+      // Refresh the recipes list to show updated data
+      onRefresh()
+
+      // Show success feedback
+      toast.success('Changes saved')
+
+    } catch (error) {
+      console.error('Error saving recipe:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to save recipe. Please try again.'
+      setSaveError(errorMessage)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const checkForUnsavedChanges = () => {
+    if (!selectedRecipe) return false
+    
+    const originalTitle = selectedRecipe.title
+    const originalIngredients = selectedRecipe.rawIngredients ? JSON.parse(selectedRecipe.rawIngredients).join('\n') : ''
+    const originalInstructions = selectedRecipe.instructions || ''
+    
+    return editFields.title !== originalTitle ||
+           editFields.rawIngredients !== originalIngredients ||
+           editFields.instructions !== originalInstructions
+  }
+
+
+
+  const handleExitEditMode = () => {
+    const hasChanges = checkForUnsavedChanges()
+    if (hasChanges) {
+      setIsUnsavedChangesDialogOpen(true)
+    } else {
+      setIsEditMode(false)
+      setEditFields({ title: '', rawIngredients: '', instructions: '' })
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!selectedRecipe) return
+    setIsDeleting(true)
+    setDeleteError(null)
+    try {
+      const response = await fetch(`/api/recipes/${selectedRecipe.id}`, {
+        method: 'DELETE'
+      })
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const errorMessage = errorData.error || 'Failed to delete recipe'
+        throw new Error(errorMessage)
+      }
+      setIsDeleteDialogOpen(false)
+      setSelectedRecipe(null)
+      onRefresh()
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete recipe'
+      setDeleteError(errorMessage)
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -349,6 +576,66 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
     onGlobalFilterChange: setSearchTerm,
   })
 
+  useEffect(() => {
+    if (isEditMode && titleInputRef.current) {
+      titleInputRef.current.focus()
+      titleInputRef.current.select()
+    }
+  }, [isEditMode])
+
+  // Debug log for Input component used in sheet edit mode
+  // 1. In DataTable, log importedRecipe before rendering ImportRecipeDialog
+  // Render the Import from URL dialog
+  const renderUrlInputDialog = () => (
+    <Dialog open={isUrlInputDialogOpen} onOpenChange={setIsUrlInputDialogOpen}>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Import Recipe from URL or Video</DialogTitle>
+          <DialogDescription>
+            Paste a recipe URL or video link to automatically extract the recipe content.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 pt-4">
+          <Input
+            type="text"
+            placeholder="Paste recipe URL or video link..."
+            value={importUrl}
+            onChange={e => setImportUrl(e.target.value)}
+            disabled={isImporting}
+          />
+          
+          {/* Video Progress Tracker - shown when video is processing */}
+          {isVideoProcessing && videoProgress && (
+            <VideoProgressTracker 
+              progress={videoProgress}
+            />
+          )}
+          
+          {/* Import Status for non-video URLs */}
+          {isImporting && !isVideoProcessing && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                <span className="text-sm font-medium text-blue-800">{importStatus}</span>
+              </div>
+            </div>
+          )}
+          
+          {importError && (
+            <div className="text-sm text-destructive">{importError}</div>
+          )}
+          
+          <Button onClick={handleUrlImport} disabled={isImporting || !importUrl} className="w-full">
+            {isImporting ? 'Importing...' : 'Import'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+  // 3. Update handleReviewDialogClose to always reset all import state
+  function handleReviewDialogClose() {
+    resetImportState()
+  }
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -359,34 +646,28 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
           className="max-w-sm"
         />
         <div className="flex gap-2">
+          {/* 1. In DataTable, log importedRecipe before rendering ImportRecipeDialog */}
+          {/* Render the Import from URL dialog */}
           <ImportRecipeDialog
             open={isImportDialogOpen}
-            onOpenChange={setIsImportDialogOpen}
+            onOpenChange={handleReviewDialogClose}
             recipe={importedRecipe}
             setRecipe={setImportedRecipe}
             isManualMode={isManualMode}
             setIsManualMode={setIsManualMode}
-            onImport={onRefresh}
+            onImport={handleUrlImport}
             setProcessingRecipeId={setProcessingRecipeId}
-            // Pass state and handlers for URL import
             url={importUrl}
             setUrl={setImportUrl}
             onUrlImport={handleUrlImport}
             loading={isImporting}
             error={importError}
-            // Pass video processing state
             videoProgress={videoProgress}
             isVideoProcessing={isVideoProcessing}
+            onRefresh={onRefresh}
           />
           
-          {/* Compact Video Progress Tracker - shown when dialog is closed and video is processing */}
-          {isVideoProcessing && videoProgress && !isImportDialogOpen && (
-            <div className="flex-1 max-w-md">
-              <VideoProgressTracker 
-                progress={videoProgress}
-              />
-            </div>
-          )}
+          {/* Video Progress Tracker is now handled inside the ImportRecipeDialog */}
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -397,7 +678,7 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
             <DropdownMenuContent>
               <DropdownMenuItem
                 onSelect={() => {
-                  setImportedRecipe({ title: "", rawIngredients: [], instructions: "" })
+                  setImportedRecipe({ title: "", rawIngredients: [], instructions: "", tags: [] })
                   setIsManualMode(true)
                   setIsImportDialogOpen(true)
                 }}
@@ -406,9 +687,8 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
-                  setImportedRecipe(null)
-                  setIsManualMode(false)
-                  setIsImportDialogOpen(true)
+                  setIsUrlInputDialogOpen(true)
+                  // Do NOT open the review dialog or reset importedRecipe here
                 }}
               >
                 Import from URL or Video
@@ -523,28 +803,343 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       {/* Render a single Sheet for the selected recipe */}
       {selectedRecipe && (
         <Sheet open={selectedRecipe !== null} onOpenChange={(open) => {
-          if (!open) setSelectedRecipe(null)
+          if (!open) {
+            // Check for unsaved changes before closing
+            if (isEditMode && checkForUnsavedChanges()) {
+              setIsUnsavedChangesDialogOpen(true)
+            } else {
+              setSelectedRecipe(null)
+              setIsEditMode(false)
+              setEditFields({ title: '', rawIngredients: '', instructions: '' })
+            }
+          }
         }}>
-          <SheetContent className="w-[50%] min-w-[320px] p-6 flex flex-col gap-6">
-            <SheetHeader>
-              <SheetTitle className="text-2xl font-bold">{selectedRecipe?.title}</SheetTitle>
-            </SheetHeader>
-            <div className="flex flex-col gap-4">
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Ingredients</h2>
-                <ul className="list-disc list-inside pl-4 space-y-1">
-                  {selectedRecipe?.rawIngredients && JSON.parse(selectedRecipe.rawIngredients).map((ingredient: string) => (
-                    <li key={ingredient}>{ingredient}</li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold mb-2">Instructions</h2>
-                <p className="whitespace-pre-line">{selectedRecipe?.instructions}</p>
+          <SheetContent className="w-full sm:w-full md:w-2/3 md:min-w-[500px] p-6 flex flex-col gap-6" showCloseButton={!isEditMode}>
+            <SheetTitle className="sr-only">{selectedRecipe?.title || 'Recipe Details'}</SheetTitle>
+            {!isEditMode && (
+              <>
+                {/* Hero Image Section */}
+                <div className="w-full">
+                  {selectedRecipe?.image ? (
+                    <div className="relative w-full">
+                      {/* Mobile: Full width hero image */}
+                      <div className="md:hidden">
+                                                 <img 
+                           src={selectedRecipe.image} 
+                           alt={`${selectedRecipe.title} recipe image`}
+                           className="w-full h-48 object-cover rounded-lg"
+                           loading="lazy"
+                           onError={(e) => {
+                             // Fallback to placeholder if image fails to load
+                             const img = e.target as HTMLImageElement
+                             img.src = '/placeholder-recipe.svg'
+                             img.onerror = null // Prevent infinite loop
+                           }}
+                         />
+                        <div className="text-2xl font-bold mt-4 mb-2">{selectedRecipe?.title}</div>
+                      </div>
+                      {/* Desktop: Square image next to title + actions */}
+                      <div className="hidden md:flex md:items-start md:gap-4">
+                                                 <img 
+                           src={selectedRecipe.image} 
+                           alt={`${selectedRecipe.title} recipe image`}
+                           className="w-32 h-32 object-cover rounded-lg flex-shrink-0"
+                           loading="lazy"
+                           onError={(e) => {
+                             // Fallback to placeholder if image fails to load
+                             const img = e.target as HTMLImageElement
+                             img.src = '/placeholder-recipe.svg'
+                             img.onerror = null // Prevent infinite loop
+                           }}
+                         />
+                        <div className="flex-1">
+                          <div className="text-2xl font-bold mb-2">{selectedRecipe?.title}</div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-2xl font-bold mt-2 mb-4">{selectedRecipe?.title}</div>
+                  )}
+                </div>
+              </>
+            )}
+            {/* Sticky close button in edit mode */}
+            {isEditMode && (
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Close Edit Mode"
+                onClick={handleExitEditMode}
+                className="absolute top-4 right-4 z-50"
+              >
+                <XIcon className="w-5 h-5" />
+              </Button>
+            )}
+            <div className="flex items-center justify-between">
+              <div className="flex gap-2 ml-auto">
+                {!isEditMode && (
+                  plannedRecipeIds.includes(selectedRecipe.id)
+                    ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          aria-label="In planner"
+                          disabled
+                          className="flex items-center gap-1"
+                        >
+                          <CheckCircle2 className="w-5 h-5 text-green-600" />
+                          In planner
+                        </Button>
+                      )
+                    : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          aria-label="Add to planner"
+                          onClick={async () => {
+                            if (!selectedRecipe) return
+                            setIsAddingToPlanner(true)
+                            try {
+                              const response = await fetch('/api/planner', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ recipeId: selectedRecipe.id, userId: 'user123' })
+                              })
+                              if (response.ok) {
+                                toast(
+                                  <div className="flex items-center gap-2">
+                                    <CheckCircle2 className="w-5 h-5 text-green-600" />
+                                    <span>Recipe added to planner!</span>
+                                  </div>
+                                )
+                                // Optimistically update plannedRecipeIds
+                                setPlannedRecipeIds(ids => [...ids, selectedRecipe.id])
+                              } else {
+                                const data = await response.json().catch(() => ({}))
+                                toast.error(data.error || 'Failed to add recipe to planner')
+                              }
+                            } catch (err) {
+                              toast.error('Failed to add recipe to planner')
+                            } finally {
+                              setIsAddingToPlanner(false)
+                            }
+                          }}
+                          disabled={isEditMode || isAddingToPlanner}
+                          className="flex items-center gap-1"
+                        >
+                          <CalendarPlus className="w-5 h-5" />
+                          {isAddingToPlanner ? 'Adding...' : 'Add to planner'}
+                        </Button>
+                      )
+                )}
+                {!isEditMode && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label="Edit Recipe"
+                    onClick={() => {
+                      setIsEditMode(true)
+                      setSaveError(null)
+                      setHasUnsavedChanges(false)
+                      setEditFields({
+                        title: selectedRecipe?.title || '',
+                        rawIngredients: selectedRecipe?.rawIngredients ? JSON.parse(selectedRecipe.rawIngredients).join('\n') : '',
+                        instructions: selectedRecipe?.instructions || ''
+                      })
+                    }}
+                    disabled={isEditMode}
+                    className="flex items-center gap-1"
+                  >
+                    <Pencil className="w-5 h-5" />
+                    Edit
+                  </Button>
+                )}
+                {!isEditMode && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label="Delete Recipe"
+                    onClick={() => setIsDeleteDialogOpen(true)}
+                    disabled={isEditMode}
+                    className="flex items-center gap-1"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                    Delete
+                  </Button>
+                )}
               </div>
             </div>
+
+            <div className="flex flex-col gap-4">
+              {isEditMode ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Title</label>
+                    <Input
+                      ref={titleInputRef}
+                      value={editFields.title}
+                      onChange={e => setEditFields(f => ({ ...f, title: e.target.value }))}
+                      placeholder="Enter recipe title"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Ingredients</label>
+                    <textarea
+                      className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows={5}
+                      value={editFields.rawIngredients}
+                      onChange={e => setEditFields(f => ({ ...f, rawIngredients: e.target.value }))}
+                      placeholder="Enter ingredients, one per line"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Enter each ingredient on a new line</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Instructions</label>
+                    <textarea
+                      className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows={8}
+                      value={editFields.instructions}
+                      onChange={e => setEditFields(f => ({ ...f, instructions: e.target.value }))}
+                      placeholder="Enter cooking instructions"
+                    />
+                  </div>
+                  {/* Error Alert */}
+                  {saveError && (
+                    <Alert variant="destructive">
+                      <AlertDescription>{saveError}</AlertDescription>
+                    </Alert>
+                  )}
+                  {/* Footer with full-width Save button */}
+                  <div className="mt-6 flex justify-end border-t pt-4">
+                    <Button 
+                      variant="default" 
+                      className="w-full" 
+                      onClick={handleSave}
+                      disabled={isSaving}
+                    >
+                      {isSaving ? 'Saving...' : 'Save'}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <h2 className="text-lg font-semibold mb-2">Ingredients</h2>
+                    <ul className="list-disc list-inside pl-4 space-y-1">
+                      {selectedRecipe?.rawIngredients && JSON.parse(selectedRecipe.rawIngredients).map((ingredient: string) => (
+                        <li key={ingredient}>{ingredient}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold mb-2">Instructions</h2>
+                    <p className="whitespace-pre-line">{selectedRecipe?.instructions}</p>
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-semibold mb-2">Tags</h2>
+                    <RecipeTagEditor 
+                      recipe={selectedRecipe} 
+                      onTagsChange={handleRecipeTagsChange}
+                      isUpdating={isUpdatingTags}
+                      error={tagUpdateError}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
           </SheetContent>
+          {/* Delete Confirmation Dialog */}
+          <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Delete Recipe</DialogTitle>
+              </DialogHeader>
+              <div className="py-2">Are you sure you want to delete this recipe? This action cannot be undone.</div>
+              {deleteError && (
+                <Alert variant="destructive" className="mb-2">
+                  <AlertDescription>{deleteError}</AlertDescription>
+                </Alert>
+              )}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsDeleteDialogOpen(false)} disabled={isDeleting}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          {/* Unsaved Changes Dialog */}
+          <Dialog open={isUnsavedChangesDialogOpen} onOpenChange={setIsUnsavedChangesDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Unsaved Changes</DialogTitle>
+              </DialogHeader>
+              <div className="py-2">You have unsaved changes. Are you sure you want to discard them?</div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsUnsavedChangesDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={() => {
+                  setIsEditMode(false)
+                  setSelectedRecipe(null)
+                  setEditFields({ title: '', rawIngredients: '', instructions: '' })
+                  setIsUnsavedChangesDialogOpen(false)
+                }}>
+                  Discard Changes
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </Sheet>
+      )}
+      {/* URL Input Dialog */}
+      {renderUrlInputDialog()}
+    </div>
+  )
+}
+
+type RecipeTagEditorProps = {
+  recipe: Recipe | null
+  onTagsChange: (recipeId: number, tags: string[]) => void
+  isUpdating?: boolean
+  error?: string | null
+}
+
+function RecipeTagEditor({ recipe, onTagsChange, isUpdating = false, error }: RecipeTagEditorProps) {
+  if (!recipe) return null
+
+  const currentTags = recipe.tags ? JSON.parse(recipe.tags) : []
+
+  return (
+    <div className="space-y-2">
+      <TagInput
+        tags={currentTags}
+        onTagsChange={(newTags) => onTagsChange(recipe.id, newTags)}
+        placeholder="Add tags like 'vegan', 'quick', 'dinner'..."
+        disabled={isUpdating}
+        getSuggestions={async (query: string) => {
+          try {
+            const response = await fetch(`/api/tags?query=${encodeURIComponent(query)}`)
+            if (response.ok) {
+              const data = await response.json()
+              return data.suggestions || []
+            }
+          } catch (error) {
+            console.warn('Failed to fetch tag suggestions:', error)
+          }
+          return []
+        }}
+      />
+      {isUpdating && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
+          <span>Saving tags...</span>
+        </div>
+      )}
+      {error && (
+        <p className="text-sm text-destructive">{error}</p>
       )}
     </div>
   )
@@ -567,6 +1162,8 @@ type ImportRecipeDialogProps = {
   // Video processing props
   videoProgress: VideoProcessingProgress | null
   isVideoProcessing: boolean
+  // Add onRefresh prop
+  onRefresh: () => void
 }
 
 function ImportRecipeDialog({
@@ -585,7 +1182,59 @@ function ImportRecipeDialog({
   error,
   videoProgress,
   isVideoProcessing,
+  onRefresh,
 }: ImportRecipeDialogProps) {
+  // --- State hooks: must be at the top ---
+  const [title, setTitle] = useState(recipe?.title || '')
+  const [ingredients, setIngredients] = useState((recipe?.rawIngredients || []).join('\n'))
+  const [instructions, setInstructions] = useState(recipe?.instructions || '')
+  const [tags, setTags] = useState<string[]>(recipe?.tags || [])
+  // Image picker state
+  const [candidateImages, setCandidateImages] = useState<string[]>([])
+  const [selectedImageIdx, setSelectedImageIdx] = useState(0)
+  const [uploadedImage, setUploadedImage] = useState<File | null>(null)
+  const [uploadedPreview, setUploadedPreview] = useState<string | null>(null)
+
+  // Sync dialog fields with recipe prop
+  useEffect(() => {
+    setTitle(recipe?.title || '')
+    setIngredients((recipe?.rawIngredients || []).join('\n'))
+    setInstructions(recipe?.instructions || '')
+    setTags(recipe?.tags || [])
+    // Update candidateImages whenever recipe changes, regardless of dialog open state
+    if (recipe) {
+      console.log('🖼️ Recipe updated, candidateImages:', recipe.candidateImages)
+      setCandidateImages(recipe.candidateImages || [])
+      setSelectedImageIdx(0)
+      setUploadedImage(null)
+      setUploadedPreview(null)
+    }
+  }, [recipe])
+
+  // Only reset candidateImages when dialog is closed
+  useEffect(() => {
+    if (!open) {
+      setCandidateImages([])
+      setSelectedImageIdx(0)
+      setUploadedImage(null)
+      setUploadedPreview(null)
+    }
+  }, [open])
+
+  function handleImageSelect(idx: number) {
+    setSelectedImageIdx(idx)
+    setUploadedImage(null)
+    setUploadedPreview(null)
+  }
+
+  function handleUploadChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) {
+      setUploadedImage(file)
+      setUploadedPreview(URL.createObjectURL(file))
+    }
+  }
+
   function handleReset() {
     setIsManualMode(false)
     setRecipe(null)
@@ -596,211 +1245,248 @@ function ImportRecipeDialog({
     if (!recipe) return
 
     try {
-      // Prepare recipe data with video metadata if available
-      const recipeData = {
-        ...recipe,
-        // Include video metadata in tags field for storage
-        ...(recipe.sourceUrl && recipe.videoMetadata && {
-          tags: JSON.stringify([
-            ...(recipe.videoMetadata ? [
-              `source:video:${recipe.videoMetadata.platform}`,
-              `extracted:${recipe.videoMetadata.extractedAt}`,
-              ...(recipe.videoMetadata.videoId ? [`video-id:${recipe.videoMetadata.videoId}`] : []),
-              ...(recipe.videoMetadata.duration ? [`duration:${recipe.videoMetadata.duration}s`] : [])
-            ] : []),
-            ...(recipe.sourceUrl ? [`source-url:${recipe.sourceUrl}`] : [])
-          ])
-        })
-      }
-
-      const res = await fetch('/api/recipes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(recipeData),
-      })
-      if (!res.ok) throw new Error('Failed to save recipe')
-      const { recipe: savedRecipe } = await res.json()
-
-      onImport()
-      onOpenChange(false)
-      setProcessingRecipeId(savedRecipe.id)
-      handleReset()
-
-      // Run background tasks without blocking the UI
-      const runBackgroundTasks = async () => {
-        try {
-          const processPromise = fetch('/api/recipes/process-ingredients', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ recipeId: savedRecipe.id }),
-          })
-
-          const summaryPromise = fetch('/api/recipes/generate-summary', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ recipeId: savedRecipe.id }),
-          })
-
-          await Promise.all([processPromise, summaryPromise])
-        } catch (err) {
-          console.error('Error during background processing:', err)
-        } finally {
-          onImport()
-          setProcessingRecipeId(null)
-        }
-      }
-
-      runBackgroundTasks()
+      // Prepare recipe data with tags and video metadata
+      const userTags = recipe.tags || []
+      // Add more fields here if needed
+      const videoTags = recipe.sourceUrl && recipe.videoMetadata ? [
+        `source:video:${recipe.videoMetadata.platform}`,
+        `extracted:${recipe.videoMetadata.extractedAt}`
+      ] : [];
     } catch (err) {
-      console.error('Error saving recipe:', err)
-      setProcessingRecipeId(null)
+      // error handling
     }
   }
 
-  return (
-    <Dialog open={open} onOpenChange={(isOpen) => {
-      if (!isOpen) {
-        handleReset();
+  // Add suggested tag handler
+  function handleAddSuggestedTag(tag: string) {
+    if (!tags.includes(tag)) setTags([...tags, tag])
+  }
+
+  // Define handleSave with backend call
+  async function handleSave() {
+    if (!title.trim() || !ingredients.trim() || !instructions.trim()) {
+      alert('Please fill in all fields')
+      return
+    }
+
+    try {
+      // Prepare recipe data for backend
+      const recipeData = {
+        title: title.trim(),
+        rawIngredients: ingredients.split('\n').map(line => line.trim()).filter(Boolean),
+        instructions: instructions.trim(),
+        tags: JSON.stringify(tags),
+        // Include selected image URL if user selected a candidate image
+        selectedImageUrl: candidateImages[selectedImageIdx] || null
       }
-      onOpenChange(isOpen);
-    }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {isManualMode ? "Create Recipe" : 
-             recipe ? (recipe.sourceUrl && recipe.videoMetadata ? 
-               `Review Video Recipe (${recipe.videoMetadata.platform})` : 
-               "Review Recipe") : 
-             "Import from URL"}
-          </DialogTitle>
-        </DialogHeader>
-        {isManualMode || recipe ? (
-          <ValidateRecipeForm
-            recipe={recipe}
-            setRecipe={setRecipe}
-            onValidate={handleValidate}
-            isManualMode={isManualMode}
-            loading={loading}
+
+      // Call existing backend endpoint
+      const response = await fetch('/api/recipes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(recipeData)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save recipe')
+      }
+
+      const responseData = await response.json()
+      const { recipe: savedRecipe, imageDownloadStatus, imageDownloadMessage } = responseData
+
+      // --- Handle user-uploaded image separately ---
+      if (uploadedImage) {
+        // User uploaded a new image - use the upload-image endpoint
+        try {
+          const formData = new FormData()
+          formData.append('file', uploadedImage)
+          formData.append('recipeId', savedRecipe.id)
+          const uploadResponse = await fetch('/api/recipes/upload-image', {
+            method: 'POST',
+            body: formData
+          })
+          if (!uploadResponse.ok) {
+            console.error('Image upload failed:', await uploadResponse.text())
+          }
+        } catch (uploadError) {
+          console.error('Error uploading image:', uploadError)
+        }
+      }
+      // Note: Candidate image URL is handled by the /api/recipes endpoint directly
+
+      // Show user-friendly message about image download status
+      if (imageDownloadStatus === 'success') {
+        console.log('✅ Image downloaded successfully')
+      } else if (imageDownloadStatus === 'failed' && imageDownloadMessage) {
+        // Show a non-blocking notification about image download failure
+        setTimeout(() => {
+          alert(`Recipe saved successfully!\n\n⚠️ ${imageDownloadMessage}`)
+        }, 100)
+      }
+
+      // Close dialog and refresh recipe list
+      onOpenChange(false)
+      onRefresh()
+
+    } catch (error) {
+      console.error('Error saving recipe:', error)
+      alert(`Failed to save recipe: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+// RETURN your dialog JSX here!
+return (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="sm:max-w-[425px]">
+      <DialogHeader>
+        <DialogTitle>{isManualMode ? 'Create Recipe' : 'Review Recipe'}</DialogTitle>
+        <DialogDescription>
+          {isManualMode 
+            ? 'Fill in the recipe details below and click save when you\'re done.'
+            : 'Review and edit the imported recipe details before saving.'
+          }
+        </DialogDescription>
+      </DialogHeader>
+      
+      <div className="grid gap-4 pt-4">
+        {/* Video Progress Tracker - shown when video is processing */}
+        {isVideoProcessing && videoProgress && (
+          <VideoProgressTracker 
+            progress={videoProgress}
           />
-        ) : (
-          <div className="flex flex-col gap-4">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Enter recipe URL or video link (Instagram, TikTok, YouTube Shorts)"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={loading}
-              />
-              <Button onClick={onUrlImport} disabled={loading}>
-                {loading ? 'Processing...' : 'Import'}
-              </Button>
-            </div>
-            {/* Video Progress Tracker - always compact, inline */}
-            {isVideoProcessing && videoProgress && (
-              <div className="mt-3">
-                <VideoProgressTracker progress={videoProgress} />
+        )}
+        
+        {/* Editable fields for title, ingredients, instructions */}
+        <div className="grid gap-4">
+          <div className="grid gap-2">
+            <label className="text-sm font-medium">Title</label>
+            <input
+              className="w-full p-2 border rounded"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Recipe title"
+            />
+          </div>
+          <div className="grid gap-2">
+            <label className="text-sm font-medium">Ingredients</label>
+            <textarea
+              className="w-full p-2 border rounded"
+              rows={4}
+              value={ingredients}
+              onChange={e => setIngredients(e.target.value)}
+              placeholder="One ingredient per line"
+            />
+          </div>
+          <div className="grid gap-2">
+            <label className="text-sm font-medium">Instructions</label>
+            <textarea
+              className="w-full p-2 border rounded"
+              rows={6}
+              value={instructions}
+              onChange={e => setInstructions(e.target.value)}
+              placeholder="Cooking instructions"
+            />
+          </div>
+        </div>
+        
+        {/* Image Section */}
+        {(candidateImages.length > 0 || uploadedPreview) && (
+          <div className="grid gap-4">
+            {/* Image Carousel Picker */}
+            {candidateImages.length > 0 && (
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">Choose an image</label>
+                <div className="flex overflow-x-auto gap-4 pb-2">
+                  {candidateImages.map((img, idx) => (
+                    <div
+                      key={img}
+                      className={`relative flex-shrink-0 w-32 h-32 rounded-lg border-2 cursor-pointer transition-all ${selectedImageIdx === idx && !uploadedImage ? 'border-blue-500' : 'border-transparent'}`}
+                      onClick={() => handleImageSelect(idx)}
+                      tabIndex={0}
+                      aria-label={`Select image ${idx + 1}`}
+                    >
+                      <img src={img} alt={`Candidate ${idx + 1}`} className="object-cover w-full h-full rounded-lg" />
+                      {selectedImageIdx === idx && !uploadedImage && (
+                        <CheckCircle2 className="absolute top-1 left-1 w-6 h-6 text-blue-500 bg-white rounded-full shadow" />
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
-            {/* Video URL Detection Info */}
-            {url && !isVideoProcessing && (() => {
-              const detection = detectVideoUrl(url)
-              if (detection.isVideoUrl) {
-                return (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                      <span className="text-sm font-medium text-blue-800">
-                        {getPlatformDisplayName(detection.platform)} video detected
-                      </span>
-                    </div>
-                    <p className="text-xs text-blue-600 mt-1">
-                      This will extract the recipe from the video's audio using AI transcription
-                    </p>
-                  </div>
-                )
-              }
-              return null
-            })()}
             
-            {/* Error Message */}
-            {error && !isVideoProcessing && <p className="text-red-500 text-sm">{error}</p>}
+            {/* Selected Image Preview */}
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Selected Image Preview</label>
+              <div className="w-full h-40 rounded-lg overflow-hidden border">
+                {uploadedPreview ? (
+                  <img src={uploadedPreview} alt="Selected preview" className="object-cover w-full h-full" />
+                ) : candidateImages[selectedImageIdx] ? (
+                  <img src={candidateImages[selectedImageIdx]} alt="Selected preview" className="object-cover w-full h-full" />
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">No image selected</div>
+                )}
+              </div>
+            </div>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-type ValidateRecipeFormProps = {
-  recipe: ImportedRecipe | null;
-  setRecipe: (recipe: ImportedRecipe | null) => void;
-  onValidate: () => void;
-  isManualMode: boolean;
-  loading: boolean;
-};
-
-function ValidateRecipeForm({
-  recipe,
-  setRecipe,
-  onValidate,
-  isManualMode,
-  loading,
-}: ValidateRecipeFormProps) {
-  const [showTranscription, setShowTranscription] = useState(false)
-  
-  const handleRecipeChange = (
-    field: keyof ImportedRecipe,
-    value: string | string[]
-  ) => {
-    if (recipe) {
-      setRecipe({ ...recipe, [field]: value });
-    }
-  };
-
-  const currentRecipe = recipe || { title: '', rawIngredients: [], instructions: '' };
-  const isVideoImport = currentRecipe.sourceUrl && currentRecipe.videoMetadata
-
-  if (!recipe && !isManualMode) return null
-
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Video Source Information (removed for video imports) */}
-      {/* Recipe Fields */}
-      <div>
-        <label className="block text-sm font-medium mb-1">Title</label>
-        <Input
-          value={currentRecipe.title}
-          onChange={(e) => handleRecipeChange('title', e.target.value)}
-          placeholder="Enter recipe title"
-        />
+        
+        {/* Upload button */}
+        <div className="flex flex-col items-center gap-2">
+          <label className="inline-flex items-center gap-2 cursor-pointer text-blue-600 hover:underline">
+            <Upload className="w-5 h-5" />
+            <span>Upload your own image</span>
+            <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleUploadChange} />
+          </label>
+          {uploadedPreview && (
+            <div className="relative w-32 h-32 mt-2">
+              <img src={uploadedPreview} alt="Uploaded preview" className="object-cover w-full h-full rounded-lg border-2 border-blue-500" />
+              <CheckCircle2 className="absolute top-1 left-1 w-6 h-6 text-blue-500 bg-white rounded-full shadow" />
+            </div>
+          )}
+        </div>
+        
+        {/* Tag Section */}
+        <div className="grid gap-2">
+          <label className="text-sm font-medium">Tags</label>
+          {recipe?.suggestedTags && recipe.suggestedTags.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <div className="text-xs text-muted-foreground w-full">Suggested:</div>
+              {recipe.suggestedTags.map(tag => (
+                <button
+                  key={tag}
+                  type="button"
+                  className={`px-2 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200 text-xs hover:bg-blue-100 ${tags.includes(tag) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  onClick={() => handleAddSuggestedTag(tag)}
+                  disabled={tags.includes(tag)}
+                >
+                  + {tag}
+                </button>
+              ))}
+            </div>
+          )}
+          <TagInput
+            tags={tags}
+            onTagsChange={setTags}
+            placeholder="Add tags like 'vegan', 'quick', 'dinner'..."
+            getSuggestions={async (query: string) => {
+              try {
+                const response = await fetch(`/api/tags?query=${encodeURIComponent(query)}`)
+                if (response.ok) {
+                  const data = await response.json()
+                  return data.suggestions || []
+                }
+              } catch (error) {
+                console.warn('Failed to fetch tag suggestions:', error)
+              }
+              return []
+            }}
+          />
+        </div>
       </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">Ingredients</label>
-        <textarea
-          className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          rows={5}
-          value={(currentRecipe.rawIngredients || []).join('\n')}
-          onChange={(e) => handleRecipeChange('rawIngredients', e.target.value.split('\n').filter(line => line.trim()))}
-          placeholder="Enter ingredients, one per line"
-        />
-        <p className="text-xs text-gray-500 mt-1">Enter each ingredient on a new line</p>
-      </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">Instructions</label>
-        <textarea
-          className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          rows={8}
-          value={currentRecipe.instructions}
-          onChange={(e) => handleRecipeChange('instructions', e.target.value)}
-          placeholder="Enter cooking instructions"
-        />
-      </div>
-      {/* Action Buttons */}
-      <div className="flex gap-2 pt-2">
-        <Button onClick={onValidate} disabled={loading} className="flex-1">
-          {loading ? 'Saving...' : 'Save Recipe'}
-        </Button>
-      </div>
-    </div>
-  )
+      
+      <Button onClick={handleSave} className="w-full">Save</Button>
+    </DialogContent>
+  </Dialog>
+)
 }

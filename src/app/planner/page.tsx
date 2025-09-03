@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { RefreshCw, Trash2, Clock, Star, Calendar, CheckCircle2, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { analytics } from '@/lib/analytics'
+import { toast } from 'sonner'
 
 // Temporary interface for planned recipes until we have the API
 interface PlannedRecipe {
@@ -22,6 +23,7 @@ interface PlannedRecipe {
     time: number
     grade: number
     tags?: string
+    image?: string | null
   }
 }
 
@@ -94,6 +96,25 @@ function PlannedRecipeCard({
             aria-label={`Mark ${recipe.title} as ${completed ? 'incomplete' : 'complete'}`}
             className="h-5 w-5"
           />
+        </div>
+
+        {/* Recipe Thumbnail */}
+        <div className="flex-shrink-0">
+                     <img 
+             src={recipe.image || '/placeholder-recipe.svg'} 
+             alt={`${recipe.title} recipe image`}
+             className={cn(
+               "w-16 h-16 object-cover rounded-lg border border-border transition-opacity",
+               completed && "opacity-50"
+             )}
+             loading="lazy"
+             onError={(e) => {
+               // Fallback to placeholder if image fails to load
+               const img = e.target as HTMLImageElement
+               img.src = '/placeholder-recipe.svg'
+               img.onerror = null // Prevent infinite loop
+             }}
+           />
         </div>
 
         {/* Recipe Content */}
@@ -186,6 +207,7 @@ export default function PlannerPage() {
   const [fullRecipeDetails, setFullRecipeDetails] = useState<any>(null)
   const [loadingRecipeDetails, setLoadingRecipeDetails] = useState(false)
   const userId = 'user123' // TODO: Replace with actual user ID
+  const [isClearing, setIsClearing] = useState(false)
 
   // Temporary mock data for development
   const mockMealPlan: MealPlan = {
@@ -400,13 +422,40 @@ export default function PlannerPage() {
               variant="outline"
               size="sm"
               className="text-destructive hover:text-destructive"
-              onClick={() => {
-                // TODO: Implement clear meal plan in Task 5.2
-                console.log('Clear meal plan')
+              onClick={async () => {
+                setIsClearing(true)
+                try {
+                  const res = await fetch(`/api/planner?userId=${userId}`, { method: 'DELETE' })
+                  if (!res.ok) {
+                    const data = await res.json().catch(() => ({}))
+                    throw new Error(data.error || 'Failed to clear meal plan')
+                  }
+                  toast(
+                    <div className="flex items-center gap-2">
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                      <span>Meal plan cleared</span>
+                    </div>
+                  )
+                  await fetchMealPlan()
+                } catch (err: any) {
+                  toast.error(err?.message || 'Failed to clear meal plan')
+                } finally {
+                  setIsClearing(false)
+                }
               }}
+              disabled={isClearing}
             >
-              <Trash2 className="h-4 w-4 mr-2" />
-              Clear Plan
+              {isClearing ? (
+                <>
+                  <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-destructive mr-2"></span>
+                  Clearing...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Clear Plan
+                </>
+              )}
             </Button>
           )}
         </div>
