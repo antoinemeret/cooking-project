@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import { cn } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -32,6 +32,7 @@ interface RecipeSheetProps {
   onClose: () => void
   onAddToPlanner: (recipeId: number) => void
   onMoreActions: (recipeId: number, action: string) => void
+  initialAction?: string
 }
 
 export function RecipeSheet({
@@ -39,9 +40,11 @@ export function RecipeSheet({
   isOpen,
   onClose,
   onAddToPlanner,
-  onMoreActions
+  onMoreActions,
+  initialAction
 }: RecipeSheetProps) {
   const [isEditMode, setIsEditMode] = useState(false)
+  const [showEditContent, setShowEditContent] = useState(false)
   const [editFields, setEditFields] = useState({
     title: recipe.title,
     rawIngredients: recipe.ingredients?.join('\n') || '',
@@ -56,13 +59,103 @@ export function RecipeSheet({
   const titleInputRef = useRef<HTMLInputElement>(null)
   const sheetRef = useRef<HTMLDivElement>(null)
 
-  // Auto-focus and select title when entering edit mode
+  // Scroll to top when sheet opens - use useLayoutEffect for synchronous execution
+  useLayoutEffect(() => {
+    if (isOpen) {
+      console.log('Sheet opened, current scroll position:', window.scrollY, document.documentElement.scrollTop)
+      
+      // Force scroll to top immediately
+      window.scrollTo(0, 0)
+      document.body.scrollTop = 0
+      document.documentElement.scrollTop = 0
+      
+      if (sheetRef.current) {
+        sheetRef.current.scrollTop = 0
+      }
+      
+      console.log('After scroll reset, position:', window.scrollY, document.documentElement.scrollTop)
+    }
+  }, [isOpen])
+
+  // Trigger initial action when sheet opens
   useEffect(() => {
-    if (isEditMode && titleInputRef.current) {
-      titleInputRef.current.focus()
-      titleInputRef.current.select()
+    if (isOpen && initialAction) {
+      handleAction(initialAction)
+    }
+  }, [isOpen, initialAction])
+
+  // Reset scroll when entering edit mode - use useLayoutEffect for synchronous execution
+  useLayoutEffect(() => {
+    if (isEditMode) {
+      console.log('Edit mode activated, current scroll position:', window.scrollY, document.documentElement.scrollTop)
+      
+      // Force scroll to top when entering edit mode
+      window.scrollTo(0, 0)
+      document.body.scrollTop = 0
+      document.documentElement.scrollTop = 0
+      
+      if (sheetRef.current) {
+        sheetRef.current.scrollTop = 0
+      }
+      
+      // Hide edit content initially to prevent layout shift
+      setShowEditContent(false)
+      
+      // Show edit content after scroll is locked
+      setTimeout(() => {
+        console.log('Showing edit content, scroll position:', window.scrollY, document.documentElement.scrollTop)
+        setShowEditContent(true)
+      }, 100)
+      
+      // Check scroll position after content is shown
+      setTimeout(() => {
+        console.log('After content shown, scroll position:', window.scrollY, document.documentElement.scrollTop)
+        if (window.scrollY > 0 || document.documentElement.scrollTop > 0) {
+          console.log('Scroll position changed, resetting to top')
+          window.scrollTo(0, 0)
+          document.body.scrollTop = 0
+          document.documentElement.scrollTop = 0
+          if (sheetRef.current) {
+            sheetRef.current.scrollTop = 0
+          }
+        }
+      }, 200)
+      
+    } else {
+      setShowEditContent(false)
     }
   }, [isEditMode])
+
+  // Add a scroll event listener to detect when scroll changes
+  useEffect(() => {
+    const handleScroll = () => {
+      if (isEditMode && isOpen && (window.scrollY > 0 || document.documentElement.scrollTop > 0)) {
+        console.log('Scroll detected in edit mode, resetting to top')
+        window.scrollTo(0, 0)
+        document.body.scrollTop = 0
+        document.documentElement.scrollTop = 0
+        if (sheetRef.current) {
+          sheetRef.current.scrollTop = 0
+        }
+      }
+    }
+
+    if (isEditMode && isOpen) {
+      window.addEventListener('scroll', handleScroll, { passive: false })
+      document.addEventListener('scroll', handleScroll, { passive: false })
+      if (sheetRef.current) {
+        sheetRef.current.addEventListener('scroll', handleScroll, { passive: false })
+      }
+    }
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll)
+      document.removeEventListener('scroll', handleScroll)
+      if (sheetRef.current) {
+        sheetRef.current.removeEventListener('scroll', handleScroll)
+      }
+    }
+  }, [isEditMode, isOpen])
 
   // Track unsaved changes
   useEffect(() => {
@@ -73,25 +166,13 @@ export function RecipeSheet({
     setHasUnsavedChanges(hasChanges)
   }, [editFields, recipe])
 
-  // Scroll to top when sheet opens
+  // Cleanup scroll lock when component unmounts
   useEffect(() => {
-    if (isOpen) {
-      // Scroll the window to top and also the sheet container
-      window.scrollTo(0, 0)
-      
-      // Also scroll the sheet container after a delay
-      const timer = setTimeout(() => {
-        if (sheetRef.current) {
-          sheetRef.current.scrollTop = 0
-        }
-        // Try scrolling the document body as well
-        document.body.scrollTop = 0
-        document.documentElement.scrollTop = 0
-      }, 150)
-      
-      return () => clearTimeout(timer)
+    return () => {
+      document.body.style.overflow = 'auto'
+      document.documentElement.style.overflow = 'auto'
     }
-  }, [isOpen])
+  }, [])
 
   if (!isOpen) return null
 
@@ -192,7 +273,7 @@ export function RecipeSheet({
       <div className="absolute inset-0 bg-black/50" />
       
       {/* Recipe sheet */}
-      <div ref={sheetRef} className="absolute bottom-0 left-0 right-0 h-full bg-white overflow-y-auto">
+      <div ref={sheetRef} className="absolute bottom-0 left-0 right-0 h-full bg-white overflow-y-auto" style={{ scrollBehavior: 'auto' }}>
         <div className="flex flex-col gap-5">
           {/* Header */}
           <div className={`relative ${recipe.image ? 'h-[312px]' : 'h-[220px]'}`}>
@@ -277,44 +358,52 @@ export function RecipeSheet({
           <div className="flex flex-col font-bold gap-5 items-start justify-start px-5 py-0 relative shrink-0 text-neutral-700 w-full">
             {isEditMode ? (
               <>
-                {/* Edit Mode Fields */}
-                <div className="w-full space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Title</label>
-                    <Input
-                      ref={titleInputRef}
-                      value={editFields.title}
-                      onChange={e => setEditFields(f => ({ ...f, title: e.target.value }))}
-                      placeholder="Enter recipe title"
-                    />
+                {/* Edit Mode Fields - Only show after delay to prevent layout shift */}
+                {showEditContent ? (
+                  <div className="w-full space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Title</label>
+                      <Input
+                        ref={titleInputRef}
+                        value={editFields.title}
+                        onChange={e => setEditFields(f => ({ ...f, title: e.target.value }))}
+                        placeholder="Enter recipe title"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Ingredients</label>
+                      <textarea
+                        className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        rows={5}
+                        value={editFields.rawIngredients}
+                        onChange={e => setEditFields(f => ({ ...f, rawIngredients: e.target.value }))}
+                        placeholder="Enter ingredients, one per line"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Enter each ingredient on a new line</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Instructions</label>
+                      <textarea
+                        className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        rows={8}
+                        value={editFields.instructions}
+                        onChange={e => setEditFields(f => ({ ...f, instructions: e.target.value }))}
+                        placeholder="Enter cooking instructions"
+                      />
+                    </div>
+                    {saveError && (
+                      <Alert variant="destructive">
+                        <AlertDescription>{saveError}</AlertDescription>
+                      </Alert>
+                    )}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Ingredients</label>
-                    <textarea
-                      className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      rows={5}
-                      value={editFields.rawIngredients}
-                      onChange={e => setEditFields(f => ({ ...f, rawIngredients: e.target.value }))}
-                      placeholder="Enter ingredients, one per line"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Enter each ingredient on a new line</p>
+                ) : (
+                  <div className="w-full space-y-4">
+                    <div className="h-10 bg-gray-100 rounded animate-pulse"></div>
+                    <div className="h-32 bg-gray-100 rounded animate-pulse"></div>
+                    <div className="h-48 bg-gray-100 rounded animate-pulse"></div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Instructions</label>
-                    <textarea
-                      className="w-full p-2 border rounded resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      rows={8}
-                      value={editFields.instructions}
-                      onChange={e => setEditFields(f => ({ ...f, instructions: e.target.value }))}
-                      placeholder="Enter cooking instructions"
-                    />
-                  </div>
-                  {saveError && (
-                    <Alert variant="destructive">
-                      <AlertDescription>{saveError}</AlertDescription>
-                    </Alert>
-                  )}
-                </div>
+                )}
               </>
             ) : (
               <>

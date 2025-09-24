@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import Link from 'next/link'
 import { Calendar, MoreVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TimeDisplay } from './TimeDisplay'
 import { RecipeActionsDrawer } from './RecipeActionsDrawer'
 import { RecipeSheet } from './RecipeSheet'
+import { RecipeSheetDesktop } from './RecipeSheetDesktop'
 import { cn } from '@/lib/utils'
 import {
   DropdownMenu,
@@ -43,6 +43,8 @@ export function RecipeCard({
 }: RecipeCardProps) {
   const [imageError, setImageError] = useState(false)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
+  const [initialAction, setInitialAction] = useState<string | undefined>(undefined)
+  const [savedScrollPosition, setSavedScrollPosition] = useState<number>(0)
 
   const handleAddToPlanner = () => {
     onAddToPlanner?.(recipe.id)
@@ -50,6 +52,24 @@ export function RecipeCard({
 
   const handleMoreAction = (action: string) => {
     onMoreActions?.(recipe.id, action)
+  }
+
+  const handleOpenSheet = (action?: string) => {
+    // Save current scroll position
+    const currentScrollPosition = window.scrollY || document.documentElement.scrollTop
+    setSavedScrollPosition(currentScrollPosition)
+    setInitialAction(action)
+    setIsSheetOpen(true)
+  }
+
+  const handleCloseSheet = () => {
+    setIsSheetOpen(false)
+    setInitialAction(undefined)
+    
+    // Restore scroll position after a short delay to ensure sheet is closed
+    setTimeout(() => {
+      window.scrollTo(0, savedScrollPosition)
+    }, 100)
   }
 
   return (
@@ -61,7 +81,7 @@ export function RecipeCard({
       <div className="flex flex-col gap-3 sm:hidden">
         {/* Recipe Image - Mobile */}
         <button
-          onClick={() => setIsSheetOpen(true)}
+          onClick={() => handleOpenSheet()}
           className="relative w-full h-[180px] rounded-lg overflow-hidden bg-muted"
         >
           {recipe.image && !imageError ? (
@@ -88,7 +108,7 @@ export function RecipeCard({
         {/* Recipe Content - Mobile */}
         <div className="flex flex-col gap-2">
           <button
-            onClick={() => setIsSheetOpen(true)}
+            onClick={() => handleOpenSheet()}
             className="text-left"
           >
             <h3 className="font-bold text-[#212b36] text-[18px] leading-[27px] line-clamp-1 hover:text-primary transition-colors">
@@ -124,6 +144,9 @@ export function RecipeCard({
                 onAddToFavorites={(id) => handleMoreAction('favorites')}
                 onAddToPlanner={(id) => handleMoreAction('planner')}
                 onDelete={(id) => handleMoreAction('delete')}
+                onOpenSheet={(id, action = 'delete') => {
+                  handleOpenSheet(action)
+                }}
               >
                 <button
                   className="h-6 w-6 rounded-[18px] flex items-center justify-center hover:bg-muted transition-colors"
@@ -141,38 +164,42 @@ export function RecipeCard({
       <div className="hidden sm:flex gap-5 items-center">
         {/* Recipe Image - Desktop */}
         <div className="flex-shrink-0">
-          <Link href={`/recipes/${recipe.id}`}>
-            <div className="relative w-40 h-40 rounded-2xl overflow-hidden bg-muted">
-              {recipe.image && !imageError ? (
+          <button
+            onClick={() => handleOpenSheet()}
+            className="relative w-40 h-40 rounded-2xl overflow-hidden bg-muted hover:opacity-90 transition-opacity"
+          >
+            {recipe.image && !imageError ? (
+              <Image
+                src={recipe.image}
+                alt={recipe.title}
+                fill
+                className="object-cover"
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-muted">
                 <Image
-                  src={recipe.image}
-                  alt={recipe.title}
-                  fill
-                  className="object-cover"
-                  onError={() => setImageError(true)}
+                  src="/placeholder-recipe.svg"
+                  alt="Recipe placeholder"
+                  width={48}
+                  height={48}
+                  className="opacity-50"
                 />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center bg-muted">
-                  <Image
-                    src="/placeholder-recipe.svg"
-                    alt="Recipe placeholder"
-                    width={48}
-                    height={48}
-                    className="opacity-50"
-                  />
-                </div>
-              )}
-            </div>
-          </Link>
+              </div>
+            )}
+          </button>
         </div>
 
         {/* Recipe Content - Desktop */}
         <div className="flex-1 min-w-0 flex flex-col gap-2">
-          <Link href={`/recipes/${recipe.id}`}>
+          <button
+            onClick={() => handleOpenSheet()}
+            className="text-left"
+          >
             <h3 className="font-bold text-[#212b36] text-xl leading-7 line-clamp-1 hover:text-primary transition-colors">
               {recipe.title}
             </h3>
-          </Link>
+          </button>
           {recipe.summary && (
             <p className="text-[#212b36] text-sm leading-5 line-clamp-2">
               {recipe.summary}
@@ -208,7 +235,7 @@ export function RecipeCard({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => handleMoreAction('edit')}>
+              <DropdownMenuItem onClick={() => handleOpenSheet('edit')}>
                 Edit Recipe
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => handleMoreAction('duplicate')}>
@@ -218,7 +245,7 @@ export function RecipeCard({
                 Share
               </DropdownMenuItem>
               <DropdownMenuItem 
-                onClick={() => handleMoreAction('delete')}
+                onClick={() => handleOpenSheet('delete')}
                 className="text-destructive focus:text-destructive"
               >
                 Delete
@@ -228,14 +255,34 @@ export function RecipeCard({
         </div>
       </div>
 
-      {/* Recipe Sheet for Mobile */}
-      <RecipeSheet
-        recipe={recipe}
-        isOpen={isSheetOpen}
-        onClose={() => setIsSheetOpen(false)}
-        onAddToPlanner={onAddToPlanner}
-        onMoreActions={onMoreActions}
-      />
+      {/* Recipe Sheet - Responsive */}
+      {(() => {
+        const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024
+        
+        if (isMobile) {
+          return (
+            <RecipeSheet
+              recipe={recipe}
+              isOpen={isSheetOpen}
+              onClose={handleCloseSheet}
+              onAddToPlanner={onAddToPlanner}
+              onMoreActions={onMoreActions}
+              initialAction={initialAction}
+            />
+          )
+        } else {
+          return (
+            <RecipeSheetDesktop
+              recipe={recipe}
+              isOpen={isSheetOpen}
+              onClose={handleCloseSheet}
+              onAddToPlanner={onAddToPlanner}
+              onMoreActions={onMoreActions}
+              initialAction={initialAction}
+            />
+          )
+        }
+      })()}
     </div>
   )
 }

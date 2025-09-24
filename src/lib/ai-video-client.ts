@@ -426,55 +426,61 @@ function parseAIResponse(
     // Remove <think> blocks if present
     cleanedResponse = cleanedResponse.replace(/<think>[\s\S]*?<\/think>/g, '').trim()
     
-    // Find JSON content (look for opening brace)
+    // Find JSON content with proper brace counting
     const jsonStart = cleanedResponse.indexOf('{')
-    const jsonEnd = cleanedResponse.lastIndexOf('}')
     
-    if (jsonStart === -1 || jsonEnd === -1) {
+    if (jsonStart === -1) {
       return {
         success: false,
         error: 'No JSON structure found in AI response'
       }
     }
     
-    const jsonStr = cleanedResponse.slice(jsonStart, jsonEnd + 1)
-    const parsed = JSON.parse(jsonStr)
-
-    // Validate required fields
-    if (!parsed.title && !parsed.ingredients && !parsed.instructions) {
-      return {
-        success: false,
-        error: 'AI response missing essential recipe components',
-        partialResults: extractPartialResults(parsed)
+    // Find the matching closing brace by counting braces
+    let braceCount = 0
+    let jsonEnd = jsonStart
+    for (let i = jsonStart; i < cleanedResponse.length; i++) {
+      if (cleanedResponse[i] === '{') braceCount++
+      if (cleanedResponse[i] === '}') braceCount--
+      if (braceCount === 0) {
+        jsonEnd = i
+        break
       }
     }
-
-    // Convert to ParsedRecipe format
-    const recipe: ParsedRecipe = {
-      title: parsed.title || 'Untitled Recipe',
-      summary: parsed.summary || null,
-      ingredients: Array.isArray(parsed.ingredients) ? parsed.ingredients : null,
-      instructions: Array.isArray(parsed.instructions) ? parsed.instructions : null,
-      cookingTime: typeof parsed.cookingTime === 'number' ? parsed.cookingTime : null,
-      servings: typeof parsed.servings === 'number' ? parsed.servings : null,
-      difficulty: parsed.difficulty || null,
-      cuisine: parsed.cuisine || null,
-      tags: Array.isArray(parsed.tags) ? parsed.tags : null
-    }
-
-    // Validate the structured recipe
-    if (!isValidRecipe(recipe)) {
+    
+    if (braceCount !== 0) {
       return {
         success: false,
-        error: 'Structured recipe failed validation',
-        partialResults: extractPartialResults(parsed)
+        error: 'No valid JSON structure found in AI response'
       }
     }
-
-    return {
-      success: true,
-      recipe,
-      reasoning: parsed.reasoning || 'Recipe extracted from video transcription'
+    
+    const jsonStr = cleanedResponse.slice(jsonStart, jsonEnd + 1).trim()
+    
+    try {
+      const parsed = JSON.parse(jsonStr)
+      return {
+        success: true,
+        data: parsed
+      }
+    } catch (parseError) {
+      console.error('❌ JSON parsing failed in ai-video-client:', parseError)
+      console.error('❌ Full JSON content length:', jsonStr.length)
+      console.error('❌ Full JSON content:', jsonStr)
+      console.error('❌ JSON content at position 145:', jsonStr.substring(140, 150))
+      console.error('❌ Character at position 145:', jsonStr.charAt(145))
+      console.error('❌ Characters around position 145:', jsonStr.substring(140, 155))
+      
+      // Try to find where the JSON actually ends
+      const firstBrace = jsonStr.indexOf('{')
+      const lastBrace = jsonStr.lastIndexOf('}')
+      console.error('❌ First brace at:', firstBrace, 'Last brace at:', lastBrace)
+      console.error('❌ Content between braces:', jsonStr.substring(firstBrace, lastBrace + 1))
+      
+      return {
+        success: false,
+        error: `JSON parsing failed: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`
+      }
     }
 
   } catch (error) {

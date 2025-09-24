@@ -28,15 +28,18 @@ export function AddRecipeDrawer({
   const [open, setOpen] = useState(false)
 
   const handleOptionClick = (option: string) => {
-    console.log(`Option clicked: ${option}`)
+    console.log(`📱 Drawer option clicked: ${option}`)
     switch (option) {
       case 'manual':
+        console.log('📱 Calling onManualAdd')
         onManualAdd?.()
         break
       case 'link':
+        console.log('📱 Calling onLinkAdd')
         onLinkAdd?.()
         break
       case 'photo':
+        console.log('📱 Calling onPhotoAdd')
         onPhotoAdd?.()
         break
     }

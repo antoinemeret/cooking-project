@@ -34,6 +34,7 @@ interface RecipeActionsDrawerProps {
   onAddToFavorites?: (recipeId: number) => void
   onAddToPlanner?: (recipeId: number) => void
   onDelete?: (recipeId: number) => void
+  onOpenSheet?: (recipeId: number, action?: string) => void
   children: React.ReactNode
 }
 
@@ -43,14 +44,18 @@ export function RecipeActionsDrawer({
   onAddToFavorites,
   onAddToPlanner,
   onDelete,
+  onOpenSheet,
   children
 }: RecipeActionsDrawerProps) {
   const [imageError, setImageError] = useState(false)
+  const [isOpen, setIsOpen] = useState(false)
 
   const handleAction = (action: string) => {
     switch (action) {
       case 'edit':
-        onEdit?.(recipe.id)
+        // Close drawer and open the sheet for edit action
+        setIsOpen(false)
+        onOpenSheet?.(recipe.id, 'edit')
         break
       case 'favorites':
         onAddToFavorites?.(recipe.id)
@@ -59,13 +64,15 @@ export function RecipeActionsDrawer({
         onAddToPlanner?.(recipe.id)
         break
       case 'delete':
-        onDelete?.(recipe.id)
+        // Close drawer and open the sheet for delete action to show confirmation dialog
+        setIsOpen(false)
+        onOpenSheet?.(recipe.id)
         break
     }
   }
 
   return (
-    <Drawer>
+    <Drawer open={isOpen} onOpenChange={setIsOpen}>
       <DrawerTrigger asChild>
         {children}
       </DrawerTrigger>

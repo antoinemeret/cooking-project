@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ImportRecipeDialog } from '@/components/recipes/ImportRecipeDialog'
 
 // Icons from Figma
 const imgRecipes = "http://localhost:3845/assets/b00b13a749c72fead8836083925fc6961fa66ea5.svg"
@@ -35,12 +36,18 @@ export function BottomNavigation() {
     photoInputRef,
     isImportDialogOpen,
     setIsImportDialogOpen,
+    isManualMode,
+    setIsManualMode,
     isUrlInputDialogOpen,
     setIsUrlInputDialogOpen,
     importUrl,
     setImportUrl,
     importError,
-    isImporting
+    isImporting,
+    importedRecipe,
+    setImportedRecipe,
+    isVideoProcessing,
+    videoProgress
   } = useAddRecipe()
 
   const navItems: NavItem[] = [
@@ -194,6 +201,31 @@ export function BottomNavigation() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Import Recipe Dialog */}
+      <ImportRecipeDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+        recipe={importedRecipe}
+        setRecipe={setImportedRecipe}
+        isManualMode={isManualMode}
+        setIsManualMode={setIsManualMode}
+        onImport={() => {
+          // Trigger refresh after import
+          window.dispatchEvent(new CustomEvent('recipeAdded'))
+        }}
+        setProcessingRecipeId={() => {}}
+        url={importUrl}
+        setUrl={setImportUrl}
+        onUrlImport={handleUrlSubmit}
+        loading={isImporting}
+        error={importError}
+        videoProgress={videoProgress}
+        isVideoProcessing={isVideoProcessing}
+        onRefresh={() => {
+          window.dispatchEvent(new CustomEvent('recipeAdded'))
+        }}
+      />
     </nav>
   )
 } 
