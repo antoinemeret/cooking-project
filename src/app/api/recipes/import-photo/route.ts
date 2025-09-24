@@ -59,6 +59,15 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // Enforce image size limit (5MB)
+  const MAX_IMAGE_SIZE = 5 * 1024 * 1024
+  if (file.size > MAX_IMAGE_SIZE) {
+    return new Response(JSON.stringify({ error: "File too large (max 5MB)" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const imageBuffer = Buffer.from(await file.arrayBuffer());
   const tempFilePath = path.join(os.tmpdir(), `recipe-import-${Date.now()}-${file.name}`);
 
@@ -75,7 +84,13 @@ export async function POST(req: NextRequest) {
         sendJSON({ status: "Analyzing recipe image..." });
         
         // Use Anthropic's Vision API to analyze the image
-        const response = await anthropic.messages.create({
+        // Timeout guard around Anthropic call
+        const withTimeout = <T>(p: Promise<T>, ms: number) => new Promise<T>((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error('Anthropic request timed out')), ms)
+          p.then(v => { clearTimeout(t); resolve(v) }).catch(e => { clearTimeout(t); reject(e) })
+        })
+
+        const response = await withTimeout(anthropic.messages.create({
           model: "claude-sonnet-4-20250514",
           max_tokens: 4000,
           messages: [
@@ -97,7 +112,7 @@ export async function POST(req: NextRequest) {
               ]
             }
           ]
-        });
+        }), 20000);
 
         sendJSON({ status: "Processing extracted data..." });
         
@@ -224,11 +239,17 @@ ${textToRepair}`
 
         console.log('Sending final recipe data:', recipeData);
         sendJSON({ status: "done", data: recipeData });
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error processing photo import:", error);
+        const message = typeof error?.message === 'string' ? error.message : String(error)
+        const isTimeout = message.toLowerCase().includes('timed out') || message.toLowerCase().includes('timeout')
+        const userMessage = isTimeout
+          ? 'Image analysis took too long. Please try again later.'
+          : (error instanceof Error ? error.message : 'Failed to process the recipe image.')
         sendJSON({ 
           status: 'error', 
-          error: error instanceof Error ? error.message : 'Failed to process the recipe image.' 
+          error: userMessage,
+          retryAfterMs: isTimeout ? 15000 : undefined
         });
       } finally {
         controller.close();

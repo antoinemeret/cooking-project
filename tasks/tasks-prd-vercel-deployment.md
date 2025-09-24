@@ -2,7 +2,8 @@
 
 - `next.config.mjs` - Next config for images, body size, and headers.
 - `src/lib/prisma.ts` - Prisma client instantiation in serverless.
-- `prisma/schema.prisma` - Database schema; must align with Vercel Postgres.
+
+- `prisma/schema.prisma` - Database schema; must align with Prisma Vercel Integration (Neon).
 - `src/app/api/**/route.ts` - API routes subject to rate limiting/security.
 - `src/app/api/recipes/import-photo/route.ts` - Uses Anthropic API; serverless constraints.
 - `src/app/api/recipes/import-video/route.ts` - Heavy processing; ensure external APIs/limits.
@@ -14,6 +15,7 @@
 - `README.md` - Deployment runbook section to be added/updated.
 - `src/middleware.ts` (to be created) - Rate limiting and admin protection.
 - `src/lib/blob.ts` (to be created) - Vercel Blob client helpers and signed URLs.
+ - `.env.example` - Example env vars including Prisma Neon/Accelerate URLs for local/dev.
 
 ### Notes
 
@@ -29,26 +31,26 @@
   - [x] 1.4 Populate env vars from PRD inventory for each environment
   - [x] 1.5 Verify build succeeds with no interactive steps
 
-- [ ] 2.0 Database on Vercel Postgres with Prisma migrate deploy
-  - [ ] 2.1 Provision Vercel Postgres (prod and preview strategy)
-  - [ ] 2.2 Set `DATABASE_URL` in Vercel; update `.env.example`
-  - [ ] 2.3 Add deploy step to run `prisma migrate deploy`
-  - [ ] 2.4 Validate Prisma Client generation and cold start behavior
-  - [ ] 2.5 Smoke-test DB connectivity via a simple API route
+- [ ] 2.0 Database via Prisma Vercel Integration (Neon) with Prisma migrate deploy
+  - [x] 2.1 Install and configure Prisma Vercel Integration for the project (prod + preview)
+  - [x] 2.2 Ensure `DATABASE_URL` and `PRISMA_ACCELERATE_URL` are set in Vercel; update `.env.example`
+  - [x] 2.3 Keep build step to run `prisma migrate deploy`
+  - [x] 2.4 Validate Prisma Client generation via Accelerate/Data Proxy and cold start behavior
+  - [x] 2.5 Smoke-test DB connectivity via a simple API route
 
 - [ ] 3.0 File uploads via Vercel Blob and Next Image configuration
-  - [ ] 3.1 Provision Vercel Blob and set required env vars
-  - [ ] 3.2 Create `src/lib/blob.ts` for upload/signed URL helpers
-  - [ ] 3.3 Refactor upload flows to use Blob instead of local FS
-  - [ ] 3.4 Restrict `next.config.mjs` image domains/remotePatterns to known hosts
-  - [ ] 3.5 Verify Next Image renders Blob-hosted assets
+  - [x] 3.1 Provision Vercel Blob and set required env vars
+  - [x] 3.2 Create `src/lib/blob.ts` for upload/signed URL helpers
+  - [x] 3.3 Refactor upload flows to use Blob instead of local FS
+  - [x] 3.4 Restrict `next.config.mjs` image domains/remotePatterns to known hosts
+  - [x] 3.5 Verify Next Image renders Blob-hosted assets
 
 - [ ] 4.0 Media/AI processing via external APIs with serverless-safe limits
-  - [ ] 4.1 Set production `LLM_PROVIDER` and keys (OpenAI/Anthropic/HF)
-  - [ ] 4.2 Remove/disable local `ollama` and heavy binaries in prod
-  - [ ] 4.3 Enforce request size/time limits on relevant API routes
-  - [ ] 4.4 Add graceful error handling for third-party API timeouts
-  - [ ] 4.5 Document which features are limited/disabled in production
+  - [x] 4.1 Set production `LLM_PROVIDER` and keys (OpenAI/Anthropic/HF)
+  - [x] 4.2 Remove/disable local `ollama` and heavy binaries in prod
+  - [x] 4.3 Enforce request size/time limits on relevant API routes
+  - [x] 4.4 Add graceful error handling for third-party API timeouts
+  - [x] 4.5 Document which features are limited/disabled in production
 
 - [ ] 5.0 Security hardening: rate limiting and admin route protection
   - [ ] 5.1 Implement `src/middleware.ts` with rate limiting for API routes

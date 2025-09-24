@@ -34,3 +34,31 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Production Runbook (Vercel)
+
+- Database: Prisma Vercel Integration (Neon + Accelerate)
+  - Env: `DATABASE_URL`, `PRISMA_ACCELERATE_URL`
+  - Migrations: `prisma migrate deploy` runs in `npm run build`
+
+- File Storage: Vercel Blob
+  - Env: `BLOB_READ_WRITE_TOKEN`
+  - Upload helper: `src/lib/blob.ts`
+
+- AI Providers
+  - Provider: Anthropic (`LLM_PROVIDER=anthropic`)
+  - Env: `ANTHROPIC_API_KEY`
+  - Scraper fallback (production): uses HuggingFace if needed (`HUGGINGFACE_API_KEY` optional)
+
+- Image Domains
+  - `next.config.mjs` restricts to Vercel Blob hosts and `raw.githubusercontent.com`
+
+- API Limits and Timeouts
+  - Scrape: timeout guard via `SCRAPE_TIMEOUT_MS` (default 15s)
+  - Import Photo: 5MB file size cap, 20s Anthropic timeout
+  - Graceful timeouts return user-friendly errors with retry hints
+
+- Known Production Limitations
+  - Local `ollama` is disabled in production
+  - Heavy/long-running processing should be moved to background jobs or external services
+  - Some third-party sites may block scraping; fallback paths provide limited functionality

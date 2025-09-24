@@ -78,12 +78,12 @@ const nextConfig = {
   // Image configuration (existing functionality)
   images: {
     domains: ['localhost'],
-    // Add video thumbnail domains if needed
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**'
-      }
+      // Allow Vercel Blob public asset hosts
+      { protocol: 'https', hostname: '*.public.blob.vercel-storage.com' },
+      { protocol: 'https', hostname: 'public.blob.vercel-storage.com' },
+      // Optionally allow GitHub images used in tests or fixtures
+      { protocol: 'https', hostname: 'raw.githubusercontent.com' }
     ]
   }
 }
