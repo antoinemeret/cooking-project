@@ -11,6 +11,9 @@ export const runtime = 'nodejs'
  * Handle chat conversations with the recipe assistant
  */
 export async function POST(request: NextRequest) {
+  // Hoist variables for Sentry context in catch
+  let sessionId: string | undefined
+  let userId: string = 'anonymous'
   try {
     // Extract client IP for rate limiting
     const clientIP = getClientIP({
@@ -31,12 +34,11 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json()
-    const { 
-      sessionId, 
-      userInput, 
-      userId = 'anonymous',
-      streaming = true 
-    } = body
+    const parsed = body as any
+    sessionId = parsed?.sessionId
+    userId = parsed?.userId ?? 'anonymous'
+    const userInput = parsed?.userInput
+    const streaming = parsed?.streaming ?? true
 
     // Validate required fields
     if (!userInput || typeof userInput !== 'string') {
@@ -55,11 +57,19 @@ export async function POST(request: NextRequest) {
 
     // Handle streaming response
     if (streaming) {
-      return handleStreamingResponse(sessionId, userInput, userId, clientIP)
+      const safeSessionId = sessionId as string
+      const safeUserInput = userInput as string
+      const safeUserId = userId as string
+      return handleStreamingResponse(safeSessionId, safeUserInput, safeUserId, clientIP)
     }
 
     // Handle non-streaming response
-    return handleStandardResponse(sessionId, userInput, userId, clientIP)
+    {
+      const safeSessionId = sessionId as string
+      const safeUserInput = userInput as string
+      const safeUserId = userId as string
+      return handleStandardResponse(safeSessionId, safeUserInput, safeUserId, clientIP)
+    }
 
   } catch (error) {
     console.error('Chat API error:', error)
@@ -244,6 +254,9 @@ async function handleStandardResponse(
  * Start a new conversation session or resume existing one
  */
 export async function PUT(request: NextRequest) {
+  // Hoist variables for Sentry context in catch
+  let userId: string = 'anonymous'
+  let preferredSessionId: string | undefined
   try {
     const clientIP = getClientIP({
       headers: Object.fromEntries(request.headers.entries())
@@ -262,7 +275,9 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId = 'anonymous', sessionId: preferredSessionId, forceNew = false } = body
+    userId = body?.userId ?? 'anonymous'
+    preferredSessionId = body?.sessionId
+    const forceNew: boolean = body?.forceNew ?? false
 
     if (forceNew) {
       // Force start a new conversation
@@ -314,9 +329,11 @@ export async function PUT(request: NextRequest) {
  * Get session information and timeout status
  */
 export async function GET(request: NextRequest) {
+  // Hoist variable for Sentry context in catch
+  let sessionId: string | null = null
   try {
     const { searchParams } = new URL(request.url)
-    const sessionId = searchParams.get('sessionId')
+    sessionId = searchParams.get('sessionId')
 
     if (!sessionId) {
       return NextResponse.json(
