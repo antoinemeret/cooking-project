@@ -22,12 +22,12 @@
 
 ## Tasks
 
-- [ ] 1.0 Vercel project, environments, and CI/CD setup (EU region, previews)
-  - [ ] 1.1 Create Vercel project, connect GitHub repo, select Next.js preset
-  - [ ] 1.2 Set default region to EU; enable preview deployments per PR
-  - [ ] 1.3 Configure environment groups (Production, Preview, Development)
-  - [ ] 1.4 Populate env vars from PRD inventory for each environment
-  - [ ] 1.5 Verify build succeeds with no interactive steps
+- [x] 1.0 Vercel project, environments, and CI/CD setup (EU region, previews)
+  - [x] 1.1 Create Vercel project, connect GitHub repo, select Next.js preset
+  - [x] 1.2 Set default region to EU; enable preview deployments per PR
+  - [x] 1.3 Configure environment groups (Production, Preview, Development)
+  - [x] 1.4 Populate env vars from PRD inventory for each environment
+  - [x] 1.5 Verify build succeeds with no interactive steps
 
 - [ ] 2.0 Database on Vercel Postgres with Prisma migrate deploy
   - [ ] 2.1 Provision Vercel Postgres (prod and preview strategy)
