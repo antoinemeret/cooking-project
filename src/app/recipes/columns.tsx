@@ -17,6 +17,8 @@ export type Recipe = {
   endSeason: number
   grade: number
   time: number
+  preparationTime?: number | null // minutes for preparation
+  cookingTime?: number | null // minutes for cooking
   createdAt: Date
   updatedAt: Date
   image?: string | null // URL to recipe image

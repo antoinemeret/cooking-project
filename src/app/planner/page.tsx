@@ -4,8 +4,14 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { RefreshCw, Trash2, Clock, Star, Calendar, CheckCircle2, Plus } from 'lucide-react'
+import { RefreshCw, Trash2, Clock, Calendar, CheckCircle2, Plus, Star } from 'lucide-react'
+
+// Icon URL from Figma
+const imgLucideCalendarMinus = "http://localhost:3845/assets/ea629e5a8e489005823ce57a22052c7486bf663c.svg"
+import { TimeDisplay } from '@/components/recipes/TimeDisplay'
+import { ServingsDisplay } from '@/components/recipes/ServingsDisplay'
+import { RecipeSheet } from '@/components/recipes/RecipeSheet'
+import { RecipeSheetDesktop } from '@/components/recipes/RecipeSheetDesktop'
 import { cn } from '@/lib/utils'
 import { analytics } from '@/lib/analytics'
 import { toast } from 'sonner'
@@ -48,6 +54,14 @@ function PlannedRecipeCard({
   onViewRecipe 
 }: PlannedRecipeCardProps) {
   const { recipe, completed, addedAt } = plannedRecipe
+  const [isDesktop, setIsDesktop] = useState(false)
+
+  useEffect(() => {
+    const update = () => setIsDesktop(typeof window !== 'undefined' && window.innerWidth >= 1024)
+    update()
+    window.addEventListener('resize', update, { passive: true })
+    return () => window.removeEventListener('resize', update)
+  }, [])
   
   // Parse tags safely
   let tags: string[] = []
@@ -70,129 +84,86 @@ function PlannedRecipeCard({
     displayDate = date.toLocaleDateString()
   }
 
-  const renderStars = (grade: number) => {
-    return Array.from({ length: 3 }, (_, i) => (
-      <Star
-        key={i}
-        className={cn(
-          "h-4 w-4",
-          i < grade ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-        )}
-      />
-    ))
-  }
 
   return (
     <div className={cn(
-      "border rounded-lg p-4 sm:p-6 bg-card text-card-foreground shadow-sm transition-all",
-      completed && "bg-muted/30"
+      "bg-white rounded-lg p-2 md:p-2 flex items-center gap-3 md:gap-3 transition-all",
+      completed && "opacity-60"
     )}>
-      <div className="flex items-start gap-4">
-        {/* Completion Checkbox */}
-        <div className="flex-shrink-0 pt-1">
-          <Checkbox
-            checked={completed}
-            onCheckedChange={onToggleComplete}
-            aria-label={`Mark ${recipe.title} as ${completed ? 'incomplete' : 'complete'}`}
-            className="h-5 w-5"
-          />
-        </div>
+      {/* Completion Checkbox - Circular */}
+      <div className="flex-shrink-0">
+        <Checkbox
+          checked={completed}
+          onCheckedChange={onToggleComplete}
+          aria-label={`Mark ${recipe.title} as ${completed ? 'incomplete' : 'complete'}`}
+          className="h-5 w-5 rounded-full border-2 border-[#b0b0b0] data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+        />
+      </div>
 
-        {/* Recipe Thumbnail */}
-        <div className="flex-shrink-0">
-                     <img 
-             src={recipe.image || '/placeholder-recipe.svg'} 
-             alt={`${recipe.title} recipe image`}
-             className={cn(
-               "w-16 h-16 object-cover rounded-lg border border-border transition-opacity",
-               completed && "opacity-50"
-             )}
-             loading="lazy"
-             onError={(e) => {
-               // Fallback to placeholder if image fails to load
-               const img = e.target as HTMLImageElement
-               img.src = '/placeholder-recipe.svg'
-               img.onerror = null // Prevent infinite loop
-             }}
-           />
-        </div>
+      {/* Recipe Image - 68px mobile / 96px desktop */}
+      <div className="flex-shrink-0">
+        <img 
+          src={recipe.image || '/placeholder-recipe.svg'} 
+          alt={`${recipe.title} recipe image`}
+          className="w-[68px] h-[68px] md:w-32 md:h-32 object-cover rounded-lg"
+          loading="lazy"
+          onError={(e) => {
+            const img = e.target as HTMLImageElement
+            img.src = '/placeholder-recipe.svg'
+            img.onerror = null
+          }}
+        />
+      </div>
 
-        {/* Recipe Content */}
-        <div className="flex-1 min-w-0">
-          {/* Recipe Header */}
-          <div className="flex items-start justify-between mb-2">
-            <button
-              onClick={onViewRecipe}
-              className={cn(
-                "text-left font-semibold text-lg hover:underline transition-colors",
-                completed 
-                  ? "text-muted-foreground line-through" 
-                  : "text-foreground hover:text-primary"
-              )}
-            >
-              {recipe.title}
-            </button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive flex-shrink-0"
-              onClick={onRemove}
-              aria-label={`Remove ${recipe.title} from meal plan`}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Recipe Summary */}
-          {recipe.summary && (
-            <p className={cn(
-              "text-sm text-muted-foreground mb-3 line-clamp-2",
-              completed && "line-through"
-            )}>
-              {recipe.summary}
-            </p>
+      {/* Recipe Content - Flexible */}
+      <div className="flex-1 min-w-0 flex flex-col gap-1 md:gap-2">
+        {/* Recipe Title */}
+        <button
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            console.log('Recipe title clicked:', recipe.title)
+            onViewRecipe()
+          }}
+          className={cn(
+            "text-left font-bold text-[16px] md:text-[22px] text-[#212b36] leading-[27px] md:leading-[22px] hover:underline transition-colors cursor-pointer",
+            completed && "line-through"
           )}
+        >
+          {recipe.title}
+        </button>
 
-          {/* Recipe Meta */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <Clock className="h-4 w-4" />
-                <span>{recipe.time} min</span>
-              </div>
-              <div className="flex items-center gap-1">
-                {renderStars(recipe.grade)}
-              </div>
-              <div className="flex items-center gap-1">
-                <span>🍽️ 4</span>
-              </div>
-              <span>Added {displayDate}</span>
-            </div>
-            
-            {/* Tags */}
-            {tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {tags.slice(0, 2).map((tag, index) => (
-                  <span
-                    key={index}
-                    className={cn(
-                      "inline-flex items-center px-2 py-1 rounded-full text-xs bg-secondary text-secondary-foreground",
-                      completed && "opacity-50"
-                    )}
-                  >
-                    {tag}
-                  </span>
-                ))}
-                {tags.length > 2 && (
-                  <span className="text-xs text-muted-foreground">
-                    +{tags.length - 2}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
+        {/* Subtitle (recipe summary) - Desktop only */}
+        {isDesktop && recipe.summary && (
+          <p className="text-[16px] leading-[28px] text-[#212b36] line-clamp-2">
+            {recipe.summary}
+          </p>
+        )}
+
+        {/* Duration and Servings Tags */}
+        <div className="flex gap-2 md:mt-2 items-center">
+          {/* Time Display - shows prep and cooking times grouped together */}
+          <TimeDisplay 
+            totalTime={recipe.time}
+          />
+
+          {/* Servings Tag */}
+          <ServingsDisplay servings={4} />
         </div>
       </div>
+
+      {/* Remove Button - 38x38px */}
+      <button
+        onClick={onRemove}
+        className="flex-shrink-0 w-[38px] h-[38px] flex items-center justify-center hover:opacity-80 transition-opacity"
+        aria-label={`Remove ${recipe.title} from planner`}
+      >
+        <img 
+          alt="Remove from planner" 
+          className="h-6 w-6" 
+          src={imgLucideCalendarMinus} 
+        />
+      </button>
     </div>
   )
 }
@@ -204,8 +175,7 @@ export default function PlannerPage() {
   const [recipeToRemove, setRecipeToRemove] = useState<PlannedRecipe | null>(null)
   const [isRemoving, setIsRemoving] = useState(false)
   const [selectedRecipe, setSelectedRecipe] = useState<PlannedRecipe['recipe'] | null>(null)
-  const [fullRecipeDetails, setFullRecipeDetails] = useState<any>(null)
-  const [loadingRecipeDetails, setLoadingRecipeDetails] = useState(false)
+  const [isSheetOpen, setIsSheetOpen] = useState(false)
   const userId = 'user123' // TODO: Replace with actual user ID
   const [isClearing, setIsClearing] = useState(false)
 
@@ -295,22 +265,6 @@ export default function PlannerPage() {
     }
   }
 
-  const fetchFullRecipeDetails = async (recipeId: number) => {
-    setLoadingRecipeDetails(true)
-    try {
-      const response = await fetch(`/api/recipes/list`)
-      if (response.ok) {
-        const data = await response.json()
-        const fullRecipe = data.recipes.find((r: any) => r.id === recipeId)
-        setFullRecipeDetails(fullRecipe || null)
-      }
-    } catch (error) {
-      console.error('Error fetching recipe details:', error)
-      setFullRecipeDetails(null)
-    } finally {
-      setLoadingRecipeDetails(false)
-    }
-  }
 
   useEffect(() => {
     fetchMealPlan()
@@ -574,8 +528,7 @@ export default function PlannerPage() {
                   })
                   
                   setSelectedRecipe(plannedRecipe.recipe)
-                  setFullRecipeDetails(null) // Reset previous details
-                  fetchFullRecipeDetails(plannedRecipe.recipe.id)
+                  setIsSheetOpen(true)
                 }}
               />
             ))}
@@ -583,196 +536,70 @@ export default function PlannerPage() {
         </div>
       )}
 
-      {/* Recipe Details Sheet */}
-      {selectedRecipe && (
-        <Sheet open={selectedRecipe !== null} onOpenChange={(open) => {
-          if (!open) setSelectedRecipe(null)
-        }}>
-          <SheetContent className="w-[90%] sm:w-[50%] min-w-[320px] p-4 sm:p-6 flex flex-col gap-4 sm:gap-6">
-            <SheetHeader>
-              <SheetTitle className="text-xl sm:text-2xl font-bold">{selectedRecipe?.title}</SheetTitle>
-              {/* Quick Actions */}
-              <div className="flex gap-2 pt-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    // Find the planned recipe to toggle completion
-                    const plannedRecipe = mealPlan?.plannedRecipes.find(pr => pr.recipe.id === selectedRecipe?.id)
-                    if (plannedRecipe) {
-                      // Same logic as the card checkbox
-                      const newCompleted = !plannedRecipe.completed
-                      setMealPlan(prev => {
-                        if (!prev) return prev
-                        const updatedPlannedRecipes = prev.plannedRecipes.map(pr => 
-                          pr.id === plannedRecipe.id 
-                            ? { ...pr, completed: newCompleted }
-                            : pr
-                        )
-                        const completedCount = updatedPlannedRecipes.filter(pr => pr.completed).length
-                        return {
-                          ...prev,
-                          plannedRecipes: updatedPlannedRecipes,
-                          completedRecipes: completedCount
-                        }
-                      })
-                      
-                      // Track meal completion analytics
-                      analytics.track('meal_completion_toggled', {
-                        recipeId: plannedRecipe.recipe.id,
-                        recipeTitle: plannedRecipe.recipe.title,
-                        isCompleted: newCompleted,
-                        totalMeals: mealPlan?.totalRecipes || 0,
-                        completedMeals: newCompleted 
-                          ? (mealPlan?.completedRecipes || 0) + 1 
-                          : (mealPlan?.completedRecipes || 0) - 1,
-                        completionRate: newCompleted 
-                          ? ((mealPlan?.completedRecipes || 0) + 1) / (mealPlan?.totalRecipes || 1) * 100
-                          : ((mealPlan?.completedRecipes || 0) - 1) / (mealPlan?.totalRecipes || 1) * 100
-                      })
-                      
-                      // Make API call
-                      fetch('/api/planner', {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          plannedRecipeId: plannedRecipe.id,
-                          completed: newCompleted
-                        })
-                      }).catch(error => {
-                        console.error('Error updating recipe completion:', error)
-                        // Revert on error
-                        setMealPlan(prev => {
-                          if (!prev) return prev
-                          const revertedPlannedRecipes = prev.plannedRecipes.map(pr => 
-                            pr.id === plannedRecipe.id 
-                              ? { ...pr, completed: !newCompleted }
-                              : pr
-                          )
-                          const completedCount = revertedPlannedRecipes.filter(pr => pr.completed).length
-                          return {
-                            ...prev,
-                            plannedRecipes: revertedPlannedRecipes,
-                            completedRecipes: completedCount
-                          }
-                        })
-                      })
-                    }
-                  }}
-                  className="flex-1"
-                >
-                  {(() => {
-                    const plannedRecipe = mealPlan?.plannedRecipes.find(pr => pr.recipe.id === selectedRecipe?.id)
-                    return plannedRecipe?.completed ? "Mark Incomplete" : "Mark Complete"
-                  })()}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => {
-                    // Find the planned recipe to remove
-                    const plannedRecipe = mealPlan?.plannedRecipes.find(pr => pr.recipe.id === selectedRecipe?.id)
+      {/* Recipe Sheet - Responsive */}
+      {selectedRecipe && (() => {
+        const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024
+        
+        if (isMobile) {
+          return (
+            <div style={{ border: '2px solid red' }}>
+              <div style={{ background: 'yellow', padding: '10px', margin: '10px' }}>
+                MOBILE VERSION - RecipeSheet (Width: {typeof window !== 'undefined' ? window.innerWidth : 'unknown'}px)
+              </div>
+              <RecipeSheet
+                recipe={selectedRecipe}
+                isOpen={isSheetOpen}
+                onClose={() => {
+                  setIsSheetOpen(false)
+                  setSelectedRecipe(null)
+                }}
+                onAddToPlanner={(recipeId) => {
+                  // Already in planner, could show a toast or do nothing
+                  toast.info('Recipe is already in your planner')
+                }}
+                onMoreActions={(recipeId, action) => {
+                  if (action === 'delete') {
+                    const plannedRecipe = mealPlan?.plannedRecipes.find(pr => pr.recipe.id === recipeId)
                     if (plannedRecipe) {
                       setRecipeToRemove(plannedRecipe)
-                      setSelectedRecipe(null) // Close the sheet
+                      setIsSheetOpen(false)
                     }
-                  }}
-                  className="flex-1"
-                >
-                  Remove from Plan
-                </Button>
-              </div>
-            </SheetHeader>
-            <div className="flex flex-col gap-4 overflow-y-auto">
-              {/* Recipe Meta */}
-              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <Clock className="h-4 w-4" />
-                  <span>{selectedRecipe.time} min</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: 3 }, (_, i) => (
-                    <Star
-                      key={i}
-                      className={cn(
-                        "h-4 w-4",
-                        i < selectedRecipe.grade ? "fill-yellow-400 text-yellow-400" : "text-gray-300"
-                      )}
-                    />
-                  ))}
-                </div>
-                <div className="flex items-center gap-1">
-                  <span>🍽️ Serves 4</span>
-                </div>
-              </div>
-
-              {/* Recipe Summary */}
-              {selectedRecipe.summary && (
-                <div>
-                  <h2 className="text-lg font-semibold mb-2">Description</h2>
-                  <p className="text-muted-foreground leading-relaxed">{selectedRecipe.summary}</p>
-                </div>
-              )}
-
-              {/* Tags */}
-              {selectedRecipe.tags && (() => {
-                try {
-                  const tags = JSON.parse(selectedRecipe.tags)
-                  if (tags.length > 0) {
-                    return (
-                      <div>
-                        <h2 className="text-lg font-semibold mb-2">Tags</h2>
-                        <div className="flex flex-wrap gap-2">
-                          {tags.map((tag: string, index: number) => (
-                            <span
-                              key={index}
-                              className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-secondary text-secondary-foreground"
-                            >
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )
                   }
-                } catch {
-                  return null
-                }
-                return null
-              })()}
-
-              {/* Ingredients */}
-              {loadingRecipeDetails ? (
-                <div className="flex items-center justify-center py-4">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                  <span className="ml-2 text-sm text-muted-foreground">Loading recipe details...</span>
-                </div>
-              ) : fullRecipeDetails ? (
-                <>
-                  <div>
-                    <h2 className="text-lg font-semibold mb-2">Ingredients</h2>
-                    <ul className="list-disc list-inside pl-4 space-y-1">
-                      {fullRecipeDetails.rawIngredients && JSON.parse(fullRecipeDetails.rawIngredients).map((ingredient: string, index: number) => (
-                        <li key={index} className="text-sm">{ingredient}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold mb-2">Instructions</h2>
-                    <p className="whitespace-pre-line text-sm leading-relaxed">{fullRecipeDetails.instructions}</p>
-                  </div>
-                </>
-              ) : (
-                <div className="bg-muted/50 rounded-lg p-4">
-                  <p className="text-sm text-muted-foreground">
-                    ⚠️ Could not load full recipe details. Please try again.
-                  </p>
-                </div>
-              )}
+                }}
+              />
             </div>
-          </SheetContent>
-        </Sheet>
-      )}
+          )
+        } else {
+          return (
+            <div style={{ border: '2px solid blue' }}>
+              <div style={{ background: 'lightblue', padding: '10px', margin: '10px' }}>
+                DESKTOP VERSION - RecipeSheetDesktop (Width: {typeof window !== 'undefined' ? window.innerWidth : 'unknown'}px)
+              </div>
+              <RecipeSheetDesktop
+                recipe={selectedRecipe}
+                isOpen={isSheetOpen}
+                onClose={() => {
+                  setIsSheetOpen(false)
+                  setSelectedRecipe(null)
+                }}
+                onAddToPlanner={(recipeId) => {
+                  // Already in planner, could show a toast or do nothing
+                  toast.info('Recipe is already in your planner')
+                }}
+                onMoreActions={(recipeId, action) => {
+                  if (action === 'delete') {
+                    const plannedRecipe = mealPlan?.plannedRecipes.find(pr => pr.recipe.id === recipeId)
+                    if (plannedRecipe) {
+                      setRecipeToRemove(plannedRecipe)
+                      setIsSheetOpen(false)
+                    }
+                  }
+                }}
+              />
+            </div>
+          )
+        }
+      })()}
 
       {/* Remove Recipe Confirmation Dialog */}
       <Dialog open={!!recipeToRemove} onOpenChange={(open) => !open && setRecipeToRemove(null)}>
