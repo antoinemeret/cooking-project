@@ -62,3 +62,38 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
   - Local `ollama` is disabled in production
   - Heavy/long-running processing should be moved to background jobs or external services
   - Some third-party sites may block scraping; fallback paths provide limited functionality
+
+### Vercel Cron
+
+- Handler: `GET /api/cron/daily`
+- Suggested schedules:
+  - Daily at 03:00 UTC: Health check/cleanup
+- Vercel setup: Project → Settings → Cron Jobs → Add Job
+
+### Rollback Procedure
+
+- Use Vercel deployments list to promote a previous successful deployment
+- Re-run `prisma migrate deploy` is safe (idempotent) on rollback
+- Verify critical endpoints: `/api/db-ping`, `/api/scrape`, `/api/recipes/upload-image`
+
+### Environment Variables (summary)
+
+- Core: `NEXT_PUBLIC_APP_URL`, `NODE_ENV`
+- Prisma: `DATABASE_URL`, `PRISMA_ACCELERATE_URL`
+- Storage: `BLOB_READ_WRITE_TOKEN`
+- AI: `LLM_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`, optional `HUGGINGFACE_API_KEY`
+- Sentry: `SENTRY_DSN`
+- Admin: `NEXT_PUBLIC_ADMIN_KEY` (or `ADMIN_KEY`)
+
+### Monitoring and On-call
+
+- Sentry alerts configured per project (set in Sentry UI)
+- Recommended monitors:
+  - Error rate spikes (server and client)
+  - Latency on `/api/scrape`, `/api/recipes/import-photo`, `/api/recipes/import-video`
+  - Cron endpoint failures `/api/cron/daily`
+- Runbook on alert:
+  1) Check Sentry event and recent deploy
+  2) Verify env variables in Vercel
+  3) Hit `/api/db-ping` for DB status
+  4) Rollback deployment if needed
