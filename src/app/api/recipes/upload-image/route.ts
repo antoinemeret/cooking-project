@@ -24,11 +24,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to fetch image from URL' }, { status: 400 })
       }
       const arrayBuffer = await imgRes.arrayBuffer()
-      const buffer = Buffer.from(arrayBuffer)
+      const buffer = new Uint8Array(arrayBuffer)
       // Optimize/normalize to webp for consistency
-      let finalBuffer = buffer
+      let finalBuffer: Buffer | Uint8Array = buffer
       try {
-        finalBuffer = await sharp(buffer)
+        finalBuffer = await sharp(buffer as any)
           .resize({ width: 1200, withoutEnlargement: true })
           .webp({ quality: 80 })
           .toBuffer()
@@ -70,12 +70,12 @@ export async function POST(req: NextRequest) {
   const ext = file.name.split('.').pop() || 'jpg'
 
   // Optimize image: resize, compress, convert to WebP
-  const buffer = Buffer.from(await file.arrayBuffer())
-  let optimizedBuffer
+  const buffer = new Uint8Array(await file.arrayBuffer())
+  let optimizedBuffer: Buffer | Uint8Array
   let finalPublicUrl = ''
 
   try {
-    optimizedBuffer = await sharp(buffer)
+    optimizedBuffer = await sharp(buffer as any)
       .resize({ width: 1200, withoutEnlargement: true })
       .webp({ quality: 80 })
       .toBuffer()
