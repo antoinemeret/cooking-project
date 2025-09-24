@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "postinstall": "prisma generate",
     "build": "next build",
-    "postbuild": "prisma generate",
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
