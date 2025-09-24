@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import sharp from 'sharp'
 import { prisma } from '@/lib/prisma'
 import { uploadToBlob } from '@/lib/blob'
@@ -11,10 +12,12 @@ export async function POST(req: NextRequest) {
   const contentType = req.headers.get('content-type') || ''
   if (contentType.includes('application/json')) {
     try {
-      const { imageUrl, recipeId } = await req.json()
-      if (!imageUrl || !recipeId) {
-        return NextResponse.json({ error: 'Missing imageUrl or recipeId' }, { status: 400 })
+      const schema = z.object({ imageUrl: z.string().url(), recipeId: z.union([z.string(), z.number()]) })
+      const parsed = schema.safeParse(await req.json())
+      if (!parsed.success) {
+        return NextResponse.json({ error: 'Invalid payload', details: parsed.error.flatten() }, { status: 400 })
       }
+      const { imageUrl, recipeId } = parsed.data as { imageUrl: string, recipeId: string | number }
       // Fetch the image from the remote URL
       const imgRes = await fetch(imageUrl)
       if (!imgRes.ok) {

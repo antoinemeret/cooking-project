@@ -53,9 +53,9 @@
   - [x] 4.5 Document which features are limited/disabled in production
 
 - [ ] 5.0 Security hardening: rate limiting and admin route protection
-  - [ ] 5.1 Implement `src/middleware.ts` with rate limiting for API routes
-  - [ ] 5.2 Add admin protection using `NEXT_PUBLIC_ADMIN_KEY` or server-side key
-  - [ ] 5.3 Sanitize and validate inputs on critical endpoints
+  - [x] 5.1 Implement `src/middleware.ts` with rate limiting for API routes
+  - [x] 5.2 Add admin protection using `NEXT_PUBLIC_ADMIN_KEY` or server-side key
+  - [x] 5.3 Sanitize and validate inputs on critical endpoints
   - [ ] 5.4 Add tests for middleware and protected routes
 
 - [ ] 6.0 Observability, scheduling, and docs (Sentry, Vercel Cron, runbook)

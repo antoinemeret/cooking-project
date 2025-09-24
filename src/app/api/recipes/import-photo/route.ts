@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { z } from 'zod'
 import { Anthropic } from "@anthropic-ai/sdk";
 import fs from "fs/promises";
 import path from "path";
@@ -41,6 +42,11 @@ Return ONLY a valid JSON object in this format:
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
+  // Optional: validate additional fields if present
+  const title = formData.get('title')
+  if (title && typeof title !== 'string') {
+    return new Response(JSON.stringify({ error: 'Invalid title' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+  }
 
   if (!file) {
     return new Response(JSON.stringify({ error: "No file uploaded." }), {
