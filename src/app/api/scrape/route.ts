@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import * as cheerio from 'cheerio'
 import { parseTraditional, isRecipeDataMeaningful } from '@/lib/scrapers/traditional-parser'
 import { getRecipeTagSuggestions } from '@/lib/ai-client'
 
+const REQUEST_TIMEOUT_MS = parseInt(process.env.SCRAPE_TIMEOUT_MS || '15000')
+
+function withTimeout<T> (promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const id = setTimeout(() => reject(new Error('Request timed out')), ms)
+    promise
+      .then((res) => { clearTimeout(id); resolve(res) })
+      .catch((err) => { clearTimeout(id); reject(err) })
+  })
+}
+
 async function extractRecipeWithLLM(prompt: any) {
   let output = ''
-  const provider = process.env.LLM_PROVIDER || 'ollama'
+  // In production, never use local Ollama. Default to Hugging Face.
+  const envProvider = process.env.LLM_PROVIDER || 'ollama'
+  const provider = process.env.NODE_ENV === 'production' ? 'huggingface' : envProvider
   if (provider === 'ollama') {
     const res = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
@@ -20,14 +34,15 @@ async function extractRecipeWithLLM(prompt: any) {
 
     output = data.response || ''
   } else {
-    const res = await fetch('https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3', {
+    const hfKey = process.env.HUGGINGFACE_API_KEY || process.env.HF_API_KEY
+    const res = await withTimeout(fetch('https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.HF_API_KEY}`,
+        Authorization: hfKey ? `Bearer ${hfKey}` : '',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ inputs: prompt }),
-    })
+    }), REQUEST_TIMEOUT_MS)
     const data = await res.json()
     output = data?.[0]?.generated_text || data?.generated_text || ''
   }
@@ -116,14 +131,19 @@ Text: ${cleanContent}`
 
 export async function POST(req: NextRequest) {
   try {
-    const { url } = await req.json()
-    if (!url) return NextResponse.json({ error: "No URL provided" }, { status: 400 })
+    const body = await req.json()
+    const schema = z.object({ url: z.string().url().refine(u => u.startsWith('http://') || u.startsWith('https://')) })
+    const parsed = schema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid URL', details: parsed.error.flatten() }, { status: 400 })
+    }
+    const { url } = parsed.data
 
-    const htmlRes = await fetch(url, {
+    const htmlRes = await withTimeout(fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36'
       }
-    })
+    }), REQUEST_TIMEOUT_MS)
     if (!htmlRes.ok) {
       const text = await htmlRes.text()
       console.error('Failed to fetch URL', htmlRes.status, text)
@@ -217,8 +237,14 @@ export async function POST(req: NextRequest) {
     console.log('API response (LLM fallback):', recipe)
     return NextResponse.json({ recipe, images: topImages })
     
-  } catch (err) {
+  } catch (err: any) {
     console.error('API /api/scrape error:', err)
-    return NextResponse.json({ error: 'Server error', message: String(err) }, { status: 500 })
+    const message = typeof err?.message === 'string' ? err.message : String(err)
+    const isTimeout = message.toLowerCase().includes('timed out') || message.toLowerCase().includes('timeout')
+    const userMessage = isTimeout
+      ? 'The content analysis service took too long to respond. Please try again in a moment.'
+      : 'Server error'
+    const status = isTimeout ? 504 : 500
+    return NextResponse.json({ error: userMessage, details: isTimeout ? 'timeout' : 'internal', retryAfterMs: isTimeout ? 15000 : undefined }, { status })
   }
 }

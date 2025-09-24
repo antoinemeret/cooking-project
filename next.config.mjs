@@ -78,14 +78,25 @@ const nextConfig = {
   // Image configuration (existing functionality)
   images: {
     domains: ['localhost'],
-    // Add video thumbnail domains if needed
     remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**'
-      }
+      // Allow Vercel Blob public asset hosts
+      { protocol: 'https', hostname: '*.public.blob.vercel-storage.com' },
+      { protocol: 'https', hostname: 'public.blob.vercel-storage.com' },
+      // Optionally allow GitHub images used in tests or fixtures
+      { protocol: 'https', hostname: 'raw.githubusercontent.com' }
     ]
   }
 }
 
-export default nextConfig
+// Sentry instrumentation (enabled only if DSN present)
+let exportedConfig = nextConfig
+try {
+  if (process.env.SENTRY_DSN) {
+    const { withSentryConfig } = await import('@sentry/nextjs')
+    exportedConfig = withSentryConfig(nextConfig, {
+      silent: true
+    })
+  }
+} catch {}
+
+export default exportedConfig

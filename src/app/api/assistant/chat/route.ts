@@ -3,6 +3,7 @@ import { mealPlanningChain } from '@/lib/conversation-chain'
 import { conversationMemory } from '@/lib/conversation-memory'
 import { checkAIApiRateLimit, getRateLimitHeaders, getClientIP } from '@/lib/rate-limiter'
 import { globalSessionStore } from '@/lib/session-store'
+import * as Sentry from '@sentry/nextjs'
 
 export const runtime = 'nodejs'
 
@@ -10,6 +11,9 @@ export const runtime = 'nodejs'
  * Handle chat conversations with the recipe assistant
  */
 export async function POST(request: NextRequest) {
+  // Hoist variables for Sentry context in catch
+  let sessionId: string | undefined
+  let userId: string = 'anonymous'
   try {
     // Extract client IP for rate limiting
     const clientIP = getClientIP({
@@ -30,12 +34,11 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json()
-    const { 
-      sessionId, 
-      userInput, 
-      userId = 'anonymous',
-      streaming = true 
-    } = body
+    const parsed = body as any
+    sessionId = parsed?.sessionId
+    userId = parsed?.userId ?? 'anonymous'
+    const userInput = parsed?.userInput
+    const streaming = parsed?.streaming ?? true
 
     // Validate required fields
     if (!userInput || typeof userInput !== 'string') {
@@ -54,14 +57,26 @@ export async function POST(request: NextRequest) {
 
     // Handle streaming response
     if (streaming) {
-      return handleStreamingResponse(sessionId, userInput, userId, clientIP)
+      const safeSessionId = sessionId as string
+      const safeUserInput = userInput as string
+      const safeUserId = userId as string
+      return handleStreamingResponse(safeSessionId, safeUserInput, safeUserId, clientIP)
     }
 
     // Handle non-streaming response
-    return handleStandardResponse(sessionId, userInput, userId, clientIP)
+    {
+      const safeSessionId = sessionId as string
+      const safeUserInput = userInput as string
+      const safeUserId = userId as string
+      return handleStandardResponse(safeSessionId, safeUserInput, safeUserId, clientIP)
+    }
 
   } catch (error) {
     console.error('Chat API error:', error)
+    Sentry.captureException(error, {
+      tags: { api: 'assistant-chat' },
+      extra: { sessionId, userId }
+    })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -148,6 +163,10 @@ async function handleStreamingResponse(
 
       } catch (error) {
         console.error('Streaming error:', error)
+        Sentry.captureException(error, {
+          tags: { api: 'assistant-chat-streaming' },
+          extra: { sessionId, userId }
+        })
         const errorData = JSON.stringify({
           type: 'error',
           error: 'Failed to process request',
@@ -214,6 +233,10 @@ async function handleStandardResponse(
 
   } catch (error) {
     console.error('Standard response error:', error)
+    Sentry.captureException(error, {
+      tags: { api: 'assistant-chat-standard' },
+      extra: { sessionId, userId }
+    })
     return NextResponse.json(
       { 
         error: 'Failed to process request',
@@ -231,6 +254,9 @@ async function handleStandardResponse(
  * Start a new conversation session or resume existing one
  */
 export async function PUT(request: NextRequest) {
+  // Hoist variables for Sentry context in catch
+  let userId: string = 'anonymous'
+  let preferredSessionId: string | undefined
   try {
     const clientIP = getClientIP({
       headers: Object.fromEntries(request.headers.entries())
@@ -249,7 +275,9 @@ export async function PUT(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { userId = 'anonymous', sessionId: preferredSessionId, forceNew = false } = body
+    userId = body?.userId ?? 'anonymous'
+    preferredSessionId = body?.sessionId
+    const forceNew: boolean = body?.forceNew ?? false
 
     if (forceNew) {
       // Force start a new conversation
@@ -286,6 +314,10 @@ export async function PUT(request: NextRequest) {
 
   } catch (error) {
     console.error('Session creation error:', error)
+    Sentry.captureException(error, {
+      tags: { api: 'assistant-chat-session' },
+      extra: { userId, preferredSessionId }
+    })
     return NextResponse.json(
       { error: 'Failed to create or resume session' },
       { status: 500 }
@@ -297,9 +329,11 @@ export async function PUT(request: NextRequest) {
  * Get session information and timeout status
  */
 export async function GET(request: NextRequest) {
+  // Hoist variable for Sentry context in catch
+  let sessionId: string | null = null
   try {
     const { searchParams } = new URL(request.url)
-    const sessionId = searchParams.get('sessionId')
+    sessionId = searchParams.get('sessionId')
 
     if (!sessionId) {
       return NextResponse.json(
@@ -344,6 +378,10 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Session retrieval error:', error)
+    Sentry.captureException(error, {
+      tags: { api: 'assistant-chat-get-session' },
+      extra: { sessionId }
+    })
     return NextResponse.json(
       { error: 'Failed to retrieve session' },
       { status: 500 }

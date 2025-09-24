@@ -1,46 +1,63 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
-import fs from 'fs/promises'
-import path from 'path'
+import { z } from 'zod'
 import sharp from 'sharp'
-
-const prisma = new PrismaClient()
+import { prisma } from '@/lib/prisma'
+import { uploadToBlob } from '@/lib/blob'
+import * as Sentry from '@sentry/nextjs'
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_SIZE = 5 * 1024 * 1024 // 5MB
-const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'recipes')
 
 export async function POST(req: NextRequest) {
+  let parsed: any = null
+  
   // Check if this is a JSON request for remote image URL
   const contentType = req.headers.get('content-type') || ''
   if (contentType.includes('application/json')) {
     try {
-      const { imageUrl, recipeId } = await req.json()
-      if (!imageUrl || !recipeId) {
-        return NextResponse.json({ error: 'Missing imageUrl or recipeId' }, { status: 400 })
+      const schema = z.object({ imageUrl: z.string().url(), recipeId: z.union([z.string(), z.number()]) })
+      parsed = schema.safeParse(await req.json())
+      if (!parsed.success) {
+        return NextResponse.json({ error: 'Invalid payload', details: parsed.error.flatten() }, { status: 400 })
       }
+      const { imageUrl, recipeId } = parsed.data as { imageUrl: string, recipeId: string | number }
       // Fetch the image from the remote URL
       const imgRes = await fetch(imageUrl)
       if (!imgRes.ok) {
         return NextResponse.json({ error: 'Failed to fetch image from URL' }, { status: 400 })
       }
       const arrayBuffer = await imgRes.arrayBuffer()
-      const buffer = Buffer.from(arrayBuffer)
-      // Guess extension from content-type
-      const ext = imgRes.headers.get('content-type')?.split('/').pop() || 'jpg'
-      const filename = `recipe-${recipeId}-remote-${Date.now()}.${ext}`
-      const filePath = path.join(UPLOAD_DIR, filename)
-      const publicUrl = `/uploads/recipes/${filename}`
-      // Save the file
-      await fs.mkdir(UPLOAD_DIR, { recursive: true })
-      await fs.writeFile(filePath, buffer)
+      const buffer = new Uint8Array(arrayBuffer)
+      // Optimize/normalize to webp for consistency
+      let finalBuffer: Buffer | Uint8Array = buffer
+      try {
+        finalBuffer = await sharp(buffer as any)
+          .resize({ width: 1200, withoutEnlargement: true })
+          .webp({ quality: 80 })
+          .toBuffer()
+      } catch {
+        // if sharp fails, fallback to original bytes
+        finalBuffer = buffer
+      }
+
+      const key = `recipes/recipe-${recipeId}-remote-${Date.now()}.webp`
+      const uploaded = await uploadToBlob(key, finalBuffer, 'image/webp')
+
       // Update recipe
       const recipe = await prisma.recipe.update({
         where: { id: Number(recipeId) },
-        data: { image: publicUrl }
+        data: { image: uploaded.url }
       })
       return NextResponse.json(recipe)
     } catch (err) {
+      console.error('Remote image processing error:', err)
+      Sentry.captureException(err, {
+        tags: { api: 'recipes-upload-remote' },
+        extra: { 
+          imageUrl: parsed.data?.imageUrl || 'unknown',
+          recipeId: parsed.data?.recipeId || 'unknown'
+        }
+      })
       return NextResponse.json({ error: 'Failed to process remote image' }, { status: 500 })
     }
   }
@@ -60,33 +77,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'File too large (max 5MB)' }, { status: 400 })
   }
 
-  // Ensure upload dir exists
-  await fs.mkdir(UPLOAD_DIR, { recursive: true })
-
   // Generate unique filename
   const ext = file.name.split('.').pop() || 'jpg'
-  const filename = `recipe-${recipeId}-${Date.now()}.${ext}`
-  const filePath = path.join(UPLOAD_DIR, filename)
-  const publicUrl = `/uploads/recipes/${filename}`
 
   // Optimize image: resize, compress, convert to WebP
-  const buffer = Buffer.from(await file.arrayBuffer())
-  let optimizedBuffer
-  let finalExt = ext.toLowerCase() === 'webp' ? 'webp' : 'webp'
-  let finalFilename = `recipe-${recipeId}-${Date.now()}.webp`
-  let finalFilePath = path.join(UPLOAD_DIR, finalFilename)
-  let finalPublicUrl = `/uploads/recipes/${finalFilename}`
+  const buffer = new Uint8Array(await file.arrayBuffer())
+  let optimizedBuffer: Buffer | Uint8Array
+  let finalPublicUrl = ''
 
   try {
-    optimizedBuffer = await sharp(buffer)
+    optimizedBuffer = await sharp(buffer as any)
       .resize({ width: 1200, withoutEnlargement: true })
       .webp({ quality: 80 })
       .toBuffer()
-    await fs.writeFile(finalFilePath, optimizedBuffer)
+    const key = `recipes/recipe-${recipeId}-${Date.now()}.webp`
+    const uploaded = await uploadToBlob(key, optimizedBuffer, 'image/webp')
+    finalPublicUrl = uploaded.url
   } catch (err) {
-    // fallback: save original if sharp fails
-    await fs.writeFile(filePath, buffer)
-    finalPublicUrl = publicUrl
+    // fallback: upload original if sharp fails
+    const key = `recipes/recipe-${recipeId}-${Date.now()}.${ext}`
+    const uploaded = await uploadToBlob(key, buffer)
+    finalPublicUrl = uploaded.url
   }
 
   // Update recipe

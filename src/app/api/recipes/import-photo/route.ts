@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { z } from 'zod'
 import { Anthropic } from "@anthropic-ai/sdk";
 import fs from "fs/promises";
 import path from "path";
@@ -41,6 +42,11 @@ Return ONLY a valid JSON object in this format:
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
+  // Optional: validate additional fields if present
+  const title = formData.get('title')
+  if (title && typeof title !== 'string') {
+    return new Response(JSON.stringify({ error: 'Invalid title' }), { status: 400, headers: { 'Content-Type': 'application/json' } })
+  }
 
   if (!file) {
     return new Response(JSON.stringify({ error: "No file uploaded." }), {
@@ -55,6 +61,15 @@ export async function POST(req: NextRequest) {
       error: "Anthropic API key not configured. Please set ANTHROPIC_API_KEY environment variable." 
     }), {
       status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Enforce image size limit (5MB)
+  const MAX_IMAGE_SIZE = 5 * 1024 * 1024
+  if (file.size > MAX_IMAGE_SIZE) {
+    return new Response(JSON.stringify({ error: "File too large (max 5MB)" }), {
+      status: 400,
       headers: { "Content-Type": "application/json" },
     });
   }
@@ -75,7 +90,13 @@ export async function POST(req: NextRequest) {
         sendJSON({ status: "Analyzing recipe image..." });
         
         // Use Anthropic's Vision API to analyze the image
-        const response = await anthropic.messages.create({
+        // Timeout guard around Anthropic call
+        const withTimeout = <T>(p: Promise<T>, ms: number) => new Promise<T>((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error('Anthropic request timed out')), ms)
+          p.then(v => { clearTimeout(t); resolve(v) }).catch(e => { clearTimeout(t); reject(e) })
+        })
+
+        const response = await withTimeout(anthropic.messages.create({
           model: "claude-sonnet-4-20250514",
           max_tokens: 4000,
           messages: [
@@ -97,7 +118,7 @@ export async function POST(req: NextRequest) {
               ]
             }
           ]
-        });
+        }), 20000);
 
         sendJSON({ status: "Processing extracted data..." });
         
@@ -224,11 +245,17 @@ ${textToRepair}`
 
         console.log('Sending final recipe data:', recipeData);
         sendJSON({ status: "done", data: recipeData });
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error processing photo import:", error);
+        const message = typeof error?.message === 'string' ? error.message : String(error)
+        const isTimeout = message.toLowerCase().includes('timed out') || message.toLowerCase().includes('timeout')
+        const userMessage = isTimeout
+          ? 'Image analysis took too long. Please try again later.'
+          : (error instanceof Error ? error.message : 'Failed to process the recipe image.')
         sendJSON({ 
           status: 'error', 
-          error: error instanceof Error ? error.message : 'Failed to process the recipe image.' 
+          error: userMessage,
+          retryAfterMs: isTimeout ? 15000 : undefined
         });
       } finally {
         controller.close();

@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Recipe {
@@ -151,4 +151,36 @@ model TagUsage {
   lastUsed  DateTime @default(now())
 
   @@unique([userId, tag])
+}
+
+// Conversational assistant chat storage
+model ChatSession {
+  id                 String            @id
+  userId             String
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  lastActivity       DateTime          @default(now())
+  status             String            @default("active") // active, idle, expired, completed
+  messageCount       Int               @default(0)
+  acceptedRecipes    String            @default("[]") // JSON array of recipe IDs as strings
+  declinedRecipes    String            @default("[]") // JSON array of recipe IDs as strings
+  currentCriteria    String            @default("{}") // JSON object of criteria
+
+  messages           ChatMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([lastActivity])
+}
+
+model ChatMessage {
+  id          String      @id @default(cuid())
+  sessionId   String
+  role        String      // 'user' | 'assistant'
+  content     String
+  timestamp   DateTime    @default(now())
+
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, timestamp])
 }
