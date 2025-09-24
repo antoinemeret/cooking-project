@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { addTagToCanonicalList } from '@/lib/tag-utils'
-import { promises as fs } from 'fs'
-import * as path from 'path'
+import sharp from 'sharp'
+import { uploadToBlob } from '@/lib/blob'
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     let imageDownloadStatus = 'none' // 'none', 'success', 'failed'
     let imageDownloadMessage = ''
 
-    // Handle image download and save if selectedImageUrl is provided
+    // Handle image download and store to blob if selectedImageUrl is provided
     if (selectedImageUrl && recipe.id) {
       try {
         console.log('📸 Downloading selected image:', selectedImageUrl)
@@ -75,14 +75,21 @@ export async function POST(req: NextRequest) {
         const imgRes = await fetch(selectedImageUrl, fetchOptions)
         if (imgRes.ok) {
           const arrayBuffer = await imgRes.arrayBuffer()
-          const buffer = Buffer.from(arrayBuffer)
-          const ext = imgRes.headers.get('content-type')?.split('/').pop() || 'jpg'
-          const filename = `recipe-${recipe.id}-${Date.now()}.${ext}`
-          const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'recipes')
-          await fs.mkdir(uploadDir, { recursive: true })
-          const filePath = path.join(uploadDir, filename)
-          await fs.writeFile(filePath, buffer)
-          const publicUrl = `/uploads/recipes/${filename}`
+          const original = new Uint8Array(arrayBuffer)
+          let finalBuffer: Buffer | Uint8Array = original
+          let contentType = imgRes.headers.get('content-type') || 'image/jpeg'
+          try {
+            finalBuffer = await sharp(original as any)
+              .resize({ width: 1200, withoutEnlargement: true })
+              .webp({ quality: 80 })
+              .toBuffer()
+            contentType = 'image/webp'
+          } catch {}
+
+          const keyBase = `recipes/recipe-${recipe.id}-${Date.now()}`
+          const key = contentType === 'image/webp' ? `${keyBase}.webp` : `${keyBase}`
+          const uploaded = await uploadToBlob(key, finalBuffer, contentType)
+          const publicUrl = uploaded.url
           
           // Update recipe with image
           await prisma.recipe.update({
@@ -92,9 +99,9 @@ export async function POST(req: NextRequest) {
           
           // Update the recipe object to include the image
           recipe.image = publicUrl
-          console.log('✅ Image saved successfully:', publicUrl)
+          console.log('✅ Image uploaded successfully:', publicUrl)
           imageDownloadStatus = 'success'
-          imageDownloadMessage = 'Image saved successfully!'
+          imageDownloadMessage = 'Image uploaded successfully!'
         } else {
           console.error('❌ Failed to download image:', selectedImageUrl, imgRes.status)
           imageDownloadStatus = 'failed'
