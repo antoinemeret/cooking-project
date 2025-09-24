@@ -3,17 +3,20 @@ import { z } from 'zod'
 import sharp from 'sharp'
 import { prisma } from '@/lib/prisma'
 import { uploadToBlob } from '@/lib/blob'
+import * as Sentry from '@sentry/nextjs'
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_SIZE = 5 * 1024 * 1024 // 5MB
 
 export async function POST(req: NextRequest) {
+  let parsed: any = null
+  
   // Check if this is a JSON request for remote image URL
   const contentType = req.headers.get('content-type') || ''
   if (contentType.includes('application/json')) {
     try {
       const schema = z.object({ imageUrl: z.string().url(), recipeId: z.union([z.string(), z.number()]) })
-      const parsed = schema.safeParse(await req.json())
+      parsed = schema.safeParse(await req.json())
       if (!parsed.success) {
         return NextResponse.json({ error: 'Invalid payload', details: parsed.error.flatten() }, { status: 400 })
       }
@@ -47,6 +50,14 @@ export async function POST(req: NextRequest) {
       })
       return NextResponse.json(recipe)
     } catch (err) {
+      console.error('Remote image processing error:', err)
+      Sentry.captureException(err, {
+        tags: { api: 'recipes-upload-remote' },
+        extra: { 
+          imageUrl: parsed.data?.imageUrl || 'unknown',
+          recipeId: parsed.data?.recipeId || 'unknown'
+        }
+      })
       return NextResponse.json({ error: 'Failed to process remote image' }, { status: 500 })
     }
   }
