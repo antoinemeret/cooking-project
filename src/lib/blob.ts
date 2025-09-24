@@ -3,7 +3,6 @@ import { del, put } from '@vercel/blob'
 type UploadResult = {
   url: string
   pathname: string
-  size: number
 }
 
 export async function uploadToBlob (key: string, data: Blob | ArrayBuffer | Uint8Array, contentType?: string): Promise<UploadResult> {
@@ -18,7 +17,7 @@ export async function uploadToBlob (key: string, data: Blob | ArrayBuffer | Uint
     token: process.env.BLOB_READ_WRITE_TOKEN
   })
 
-  return { url: res.url, pathname: res.pathname, size: res.size }
+  return { url: res.url, pathname: res.pathname }
 }
 
 export async function deleteFromBlob (urlOrPathname: string): Promise<{ success: boolean }> {
