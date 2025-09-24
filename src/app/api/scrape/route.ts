@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import * as cheerio from 'cheerio'
 import { parseTraditional, isRecipeDataMeaningful } from '@/lib/scrapers/traditional-parser'
 import { getRecipeTagSuggestions } from '@/lib/ai-client'
@@ -130,8 +131,13 @@ Text: ${cleanContent}`
 
 export async function POST(req: NextRequest) {
   try {
-    const { url } = await req.json()
-    if (!url) return NextResponse.json({ error: "No URL provided" }, { status: 400 })
+    const body = await req.json()
+    const schema = z.object({ url: z.string().url().refine(u => u.startsWith('http://') || u.startsWith('https://')) })
+    const parsed = schema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid URL', details: parsed.error.flatten() }, { status: 400 })
+    }
+    const { url } = parsed.data
 
     const htmlRes = await withTimeout(fetch(url, {
       headers: {
