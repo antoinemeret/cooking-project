@@ -142,12 +142,12 @@ export function RecipeSheetDesktop({
     } else if (action === 'delete') {
       setIsDeleteDialogOpen(true)
     } else {
-      onMoreActions(recipe.id, action)
+      onMoreActions?.(recipe.id, action)
     }
   }
 
   const handleAddToPlanner = () => {
-    onAddToPlanner(recipe.id)
+    onAddToPlanner?.(recipe.id)
   }
 
   const handleSave = async () => {
@@ -175,7 +175,7 @@ export function RecipeSheetDesktop({
 
       setIsEditMode(false)
       setHasUnsavedChanges(false)
-      onMoreActions(recipe.id, 'refresh') // Refresh the list
+      onMoreActions?.(recipe.id, 'refresh') // Refresh the list
     } catch (error) {
       console.error('Save error:', error)
       setSaveError(error instanceof Error ? error.message : 'Failed to save recipe')
@@ -211,7 +211,7 @@ export function RecipeSheetDesktop({
 
       setIsDeleteDialogOpen(false)
       onClose() // Close the sheet
-      onMoreActions(recipe.id, 'delete') // This will refresh the list
+      onMoreActions?.(recipe.id, 'delete') // This will refresh the list
     } catch (error) {
       console.error('Delete error:', error)
       setDeleteError(error instanceof Error ? error.message : 'Failed to delete recipe')

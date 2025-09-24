@@ -459,9 +459,31 @@ function parseAIResponse(
     
     try {
       const parsed = JSON.parse(jsonStr)
+      // Coerce parsed JSON into ParsedRecipe shape
+      const recipe: ParsedRecipe = {
+        title: typeof parsed.title === 'string' ? parsed.title : null,
+        summary: typeof parsed.summary === 'string' ? parsed.summary : null,
+        ingredients: Array.isArray(parsed.ingredients)
+          ? parsed.ingredients.filter((i: any) => typeof i === 'string')
+          : null,
+        instructions: Array.isArray(parsed.instructions)
+          ? parsed.instructions.filter((s: any) => typeof s === 'string')
+          : null,
+        cookingTime: typeof parsed.cookingTime === 'number' ? parsed.cookingTime : null,
+        servings: typeof parsed.servings === 'number' ? parsed.servings : null,
+        difficulty: typeof parsed.difficulty === 'string' ? parsed.difficulty : null,
+        cuisine: typeof parsed.cuisine === 'string' ? parsed.cuisine : null,
+        tags: Array.isArray(parsed.tags)
+          ? parsed.tags.filter((t: any) => typeof t === 'string')
+          : []
+      }
+
+      const reasoning = typeof parsed.reasoning === 'string' ? parsed.reasoning : undefined
+
       return {
         success: true,
-        data: parsed
+        recipe,
+        reasoning
       }
     } catch (parseError) {
       console.error('❌ JSON parsing failed in ai-video-client:', parseError)

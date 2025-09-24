@@ -324,7 +324,7 @@ function enhancePlatformSpecificSuggestions(
   platform: string,
   errorCode: VideoImportErrorCode
 ): string[] {
-  const platformSuggestions: Record<string, Record<VideoImportErrorCode, string[]>> = {
+  const platformSuggestions: Record<string, Partial<Record<VideoImportErrorCode, string[]>>> = {
     instagram: {
       [VideoImportErrorCode.VIDEO_DOWNLOAD_FAILED]: [
         'Make sure the Instagram Reel is not from a private account',

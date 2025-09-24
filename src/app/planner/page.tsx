@@ -144,8 +144,7 @@ function PlannedRecipeCard({
         <div className="flex gap-2 md:mt-2 items-center">
           {/* Time Display - shows prep and cooking times grouped together */}
           <TimeDisplay 
-            preparationTime={recipe.preparationTime}
-            cookingTime={recipe.cookingTime}
+            totalTime={recipe.time}
           />
 
           {/* Servings Tag */}
@@ -554,13 +553,13 @@ export default function PlannerPage() {
                   setIsSheetOpen(false)
                   setSelectedRecipe(null)
                 }}
-                onAddToPlanner={() => {
+                onAddToPlanner={(recipeId) => {
                   // Already in planner, could show a toast or do nothing
                   toast.info('Recipe is already in your planner')
                 }}
-                onMoreActions={(action) => {
+                onMoreActions={(recipeId, action) => {
                   if (action === 'delete') {
-                    const plannedRecipe = mealPlan?.plannedRecipes.find(pr => pr.recipe.id === selectedRecipe.id)
+                    const plannedRecipe = mealPlan?.plannedRecipes.find(pr => pr.recipe.id === recipeId)
                     if (plannedRecipe) {
                       setRecipeToRemove(plannedRecipe)
                       setIsSheetOpen(false)
@@ -583,13 +582,13 @@ export default function PlannerPage() {
                   setIsSheetOpen(false)
                   setSelectedRecipe(null)
                 }}
-                onAddToPlanner={() => {
+                onAddToPlanner={(recipeId) => {
                   // Already in planner, could show a toast or do nothing
                   toast.info('Recipe is already in your planner')
                 }}
-                onMoreActions={(action) => {
+                onMoreActions={(recipeId, action) => {
                   if (action === 'delete') {
-                    const plannedRecipe = mealPlan?.plannedRecipes.find(pr => pr.recipe.id === selectedRecipe.id)
+                    const plannedRecipe = mealPlan?.plannedRecipes.find(pr => pr.recipe.id === recipeId)
                     if (plannedRecipe) {
                       setRecipeToRemove(plannedRecipe)
                       setIsSheetOpen(false)

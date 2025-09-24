@@ -265,8 +265,8 @@ export function RecipeCard({
               recipe={recipe}
               isOpen={isSheetOpen}
               onClose={handleCloseSheet}
-              onAddToPlanner={onAddToPlanner}
-              onMoreActions={onMoreActions}
+              onAddToPlanner={(id) => onAddToPlanner?.(id)}
+              onMoreActions={(id, action) => onMoreActions?.(id, action)}
               initialAction={initialAction}
             />
           )
@@ -276,8 +276,8 @@ export function RecipeCard({
               recipe={recipe}
               isOpen={isSheetOpen}
               onClose={handleCloseSheet}
-              onAddToPlanner={onAddToPlanner}
-              onMoreActions={onMoreActions}
+              onAddToPlanner={(id) => onAddToPlanner?.(id)}
+              onMoreActions={(id, action) => onMoreActions?.(id, action)}
               initialAction={initialAction}
             />
           )
