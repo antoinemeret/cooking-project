@@ -84,11 +84,11 @@ export class MealPlanningConversationChain {
     }
 
     // Use enhanced session creation
-    globalSessionStore.createSession(sessionId, session)
+    await globalSessionStore.createSession(sessionId, session)
 
     // Welcome message
     const welcomeMessage = await this.generateWelcomeMessage(userId)
-    this.addMessage(sessionId, 'assistant', welcomeMessage)
+    await this.addMessage(sessionId, 'assistant', welcomeMessage)
 
     return sessionId
   }
@@ -315,7 +315,7 @@ What kind of meal are you looking for? 🍳`
 
     // Continue with normal processing
     // Add user message to conversation
-    this.addMessage(sessionId, 'user', sanitizedInput)
+    await this.addMessage(sessionId, 'user', sanitizedInput)
 
     // Extract criteria from user input
     const extractedCriteria = await this.extractCriteriaFromInput(sanitizedInput, session.currentCriteria)
@@ -335,7 +335,7 @@ What kind of meal are you looking for? 🍳`
 
 What would you like to try instead? 🍳`
       
-      this.addMessage(sessionId, 'assistant', noMatchResponse)
+      await this.addMessage(sessionId, 'assistant', noMatchResponse)
       session.updatedAt = new Date()
       globalSessionStore.setSession(sessionId, session)
 
@@ -355,7 +355,7 @@ What would you like to try instead? 🍳`
     )
 
     // Add AI response to conversation
-    this.addMessage(sessionId, 'assistant', aiResult.response)
+    await this.addMessage(sessionId, 'assistant', aiResult.response)
 
     // Extract recipe suggestions from response if any
     let suggestedRecipes = this.extractRecipeSuggestions(aiResult.response, availableRecipes)
@@ -370,7 +370,7 @@ What would you like to try instead? 🍳`
     }
 
     session.updatedAt = new Date()
-    globalSessionStore.setSession(sessionId, session) // Update the session
+    await globalSessionStore.setSession(sessionId, session) // Update the session
 
     return {
       response: aiResult.response,
@@ -393,7 +393,7 @@ What would you like to try instead? 🍳`
     }
 
     // Add user message to conversation
-    this.addMessage(sessionId, 'user', userInput)
+    await this.addMessage(sessionId, 'user', userInput)
 
     // Extract criteria and get filtered recipes
     const extractedCriteria = await this.extractCriteriaFromInput(userInput, session.currentCriteria)
@@ -420,9 +420,9 @@ What would you like to try instead? 🍳`
     }
 
     // Add complete response to conversation
-    this.addMessage(sessionId, 'assistant', fullResponse)
+    await this.addMessage(sessionId, 'assistant', fullResponse)
     session.updatedAt = new Date()
-    globalSessionStore.setSession(sessionId, session) // Update the session
+    await globalSessionStore.setSession(sessionId, session) // Update the session
   }
 
   /**
@@ -452,9 +452,9 @@ What would you like to try instead? 🍳`
     const recipe = await prisma.recipe.findUnique({ where: { id: recipeId } })
     const confirmationMessage = `Great choice! I've added **${recipe?.title}** to your meal plan. Would you like me to suggest another recipe or help you with something else?`
 
-    this.addMessage(sessionId, 'assistant', confirmationMessage)
+    await this.addMessage(sessionId, 'assistant', confirmationMessage)
     session.updatedAt = new Date()
-    globalSessionStore.setSession(sessionId, session)
+    await globalSessionStore.setSession(sessionId, session)
 
     return confirmationMessage
   }
@@ -493,9 +493,9 @@ What would you like to try instead? 🍳`
 
     responseMessage += ` Let me suggest something else that might work better for you.`
 
-    this.addMessage(sessionId, 'assistant', responseMessage)
+    await this.addMessage(sessionId, 'assistant', responseMessage)
     session.updatedAt = new Date()
-    globalSessionStore.setSession(sessionId, session)
+    await globalSessionStore.setSession(sessionId, session)
 
     return responseMessage
   }
@@ -534,9 +534,9 @@ What would you like to try instead? 🍳`
 
     const undoMessage = `I've undone your ${lastAction.action} of **${recipe?.title}**. You can now make a different choice about this recipe.`
     
-    this.addMessage(sessionId, 'assistant', undoMessage)
+    await this.addMessage(sessionId, 'assistant', undoMessage)
     session.updatedAt = new Date()
-    globalSessionStore.setSession(sessionId, session)
+    await globalSessionStore.setSession(sessionId, session)
 
     return {
       success: true,
@@ -649,7 +649,7 @@ What would you like to try instead? 🍳`
 
       const finalMessage = `Perfect! I've created your meal plan with ${session.acceptedRecipes.length} recipe${session.acceptedRecipes.length !== 1 ? 's' : ''}. You can view and manage your plan in the Planner tab. Happy cooking! 🍳`
       
-      this.addMessage(sessionId, 'assistant', finalMessage)
+      await this.addMessage(sessionId, 'assistant', finalMessage)
 
       return {
         success: true,
@@ -705,7 +705,7 @@ What would you like to cook? 🍳`
   /**
    * Add message to conversation history
    */
-  private addMessage(sessionId: string, role: 'user' | 'assistant', content: string) {
+  private async addMessage(sessionId: string, role: 'user' | 'assistant', content: string) {
     const session = globalSessionStore.getSession(sessionId)
     if (session) {
       session.messages.push({
@@ -713,7 +713,7 @@ What would you like to cook? 🍳`
         content,
         timestamp: new Date()
       })
-      globalSessionStore.setSession(sessionId, session) // Update the session
+      await globalSessionStore.setSession(sessionId, session) // Update the session
     }
   }
 

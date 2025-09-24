@@ -773,15 +773,22 @@ export async function POST(req: NextRequest) {
       // Return the thumbnail URL so the frontend can use it for manual upload
       return new Response(JSON.stringify({ error: 'Failed to download thumbnail image', thumbnailUrl: imageUrl }), { status: 400 })
     }
-    const buffer = Buffer.from(await imageRes.arrayBuffer())
-    // 4. Save to uploads dir
-    const ext = imageUrl.split('.').pop()?.split('?')[0] || 'jpg'
-    const filename = `recipe-${recipeId}-instagram-thumb-${Date.now()}.${ext}`
-    const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'recipes')
-    await fs.mkdir(uploadDir, { recursive: true })
-    const filePath = path.join(uploadDir, filename)
-    await fs.writeFile(filePath, buffer)
-    const publicUrl = `/uploads/recipes/${filename}`
+    const buffer = new Uint8Array(await imageRes.arrayBuffer())
+    // 4. Upload to blob storage
+    let finalBuffer: Buffer | Uint8Array = buffer
+    let contentType = imageRes.headers.get('content-type') || 'image/jpeg'
+    try {
+      const sharp = (await import('sharp')).default
+      finalBuffer = await sharp(buffer as any)
+        .resize({ width: 1200, withoutEnlargement: true })
+        .webp({ quality: 80 })
+        .toBuffer()
+      contentType = 'image/webp'
+    } catch {}
+    const key = `recipes/recipe-${recipeId}-instagram-thumb-${Date.now()}${contentType === 'image/webp' ? '.webp' : ''}`
+    const { uploadToBlob } = await import('@/lib/blob')
+    const uploaded = await uploadToBlob(key, finalBuffer, contentType)
+    const publicUrl = uploaded.url
     // 5. Update recipe
     const recipe = await prisma.recipe.update({
       where: { id: Number(recipeId) },
