@@ -3,10 +3,12 @@ import { prisma } from '@/lib/prisma'
 import { addTagToCanonicalList } from '@/lib/tag-utils'
 import sharp from 'sharp'
 import { uploadToBlob } from '@/lib/blob'
+import * as Sentry from '@sentry/nextjs'
 
 export async function POST(req: NextRequest) {
+  let body: any = null
   try {
-    const body = await req.json()
+    body = await req.json()
     const { title, rawIngredients, instructions, tags, selectedImageUrl } = body
 
     if (!title || !Array.isArray(rawIngredients) || !instructions) {
@@ -142,6 +144,14 @@ export async function POST(req: NextRequest) {
       imageDownloadMessage: imageDownloadMessage || undefined
     })
   } catch (err) {
+    console.error('Recipe creation error:', err)
+    Sentry.captureException(err, {
+      tags: { api: 'recipes-create' },
+      extra: { 
+        title: body?.title || 'unknown',
+        hasImage: !!body?.selectedImageUrl 
+      }
+    })
     return NextResponse.json({ error: 'Server error' }, { status: 500 })
   }
 }

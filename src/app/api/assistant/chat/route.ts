@@ -3,6 +3,7 @@ import { mealPlanningChain } from '@/lib/conversation-chain'
 import { conversationMemory } from '@/lib/conversation-memory'
 import { checkAIApiRateLimit, getRateLimitHeaders, getClientIP } from '@/lib/rate-limiter'
 import { globalSessionStore } from '@/lib/session-store'
+import * as Sentry from '@sentry/nextjs'
 
 export const runtime = 'nodejs'
 
@@ -62,6 +63,10 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Chat API error:', error)
+    Sentry.captureException(error, {
+      tags: { api: 'assistant-chat' },
+      extra: { sessionId, userId }
+    })
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -148,6 +153,10 @@ async function handleStreamingResponse(
 
       } catch (error) {
         console.error('Streaming error:', error)
+        Sentry.captureException(error, {
+          tags: { api: 'assistant-chat-streaming' },
+          extra: { sessionId, userId }
+        })
         const errorData = JSON.stringify({
           type: 'error',
           error: 'Failed to process request',
@@ -214,6 +223,10 @@ async function handleStandardResponse(
 
   } catch (error) {
     console.error('Standard response error:', error)
+    Sentry.captureException(error, {
+      tags: { api: 'assistant-chat-standard' },
+      extra: { sessionId, userId }
+    })
     return NextResponse.json(
       { 
         error: 'Failed to process request',
@@ -286,6 +299,10 @@ export async function PUT(request: NextRequest) {
 
   } catch (error) {
     console.error('Session creation error:', error)
+    Sentry.captureException(error, {
+      tags: { api: 'assistant-chat-session' },
+      extra: { userId, preferredSessionId }
+    })
     return NextResponse.json(
       { error: 'Failed to create or resume session' },
       { status: 500 }
@@ -344,6 +361,10 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('Session retrieval error:', error)
+    Sentry.captureException(error, {
+      tags: { api: 'assistant-chat-get-session' },
+      extra: { sessionId }
+    })
     return NextResponse.json(
       { error: 'Failed to retrieve session' },
       { status: 500 }
