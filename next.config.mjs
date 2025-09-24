@@ -88,4 +88,15 @@ const nextConfig = {
   }
 }
 
-export default nextConfig
+// Sentry instrumentation (enabled only if DSN present)
+let exportedConfig = nextConfig
+try {
+  if (process.env.SENTRY_DSN) {
+    const { withSentryConfig } = await import('@sentry/nextjs')
+    exportedConfig = withSentryConfig(nextConfig, {
+      silent: true
+    })
+  }
+} catch {}
+
+export default exportedConfig

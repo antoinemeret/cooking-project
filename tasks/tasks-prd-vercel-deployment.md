@@ -59,10 +59,10 @@
   - [ ] 5.4 Add tests for middleware and protected routes
 
 - [ ] 6.0 Observability, scheduling, and docs (Sentry, Vercel Cron, runbook)
-  - [ ] 6.1 Integrate Sentry SDK and set `SENTRY_DSN`
-  - [ ] 6.2 Upload source maps during build (Vercel/Sentry configuration)
-  - [ ] 6.3 Define and configure Vercel Cron jobs and handlers
-  - [ ] 6.4 Add deployment runbook to `README.md` (envs, rollback, limitations)
-  - [ ] 6.5 Add monitoring and on-call notes for production
+  - [x] 6.1 Integrate Sentry SDK and set `SENTRY_DSN`
+  - [x] 6.2 Upload source maps during build (Vercel/Sentry configuration)
+  - [x] 6.3 Define and configure Vercel Cron jobs and handlers
+  - [x] 6.4 Add deployment runbook to `README.md` (envs, rollback, limitations)
+  - [x] 6.5 Add monitoring and on-call notes for production
 
 
