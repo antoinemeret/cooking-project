@@ -644,8 +644,8 @@ async function callAnthropicTagSuggestion(recipe: { title: string, ingredients: 
 }
 
 export async function getRecipeTagSuggestions(
-  recipe: { title: string, ingredients: string[], instructions: string }
-): Promise<{ tags: string[], raw: string, error?: string }> {
+  recipe: { title: string, ingredients: string[], instructions: string, }
+): Promise<{ tags: string[], raw: string, error?: string, claude?: { tags: string[], raw: string }}> {
   try {
     const responseText = await callAnthropicTagSuggestion(recipe)
     let tags: string[] = []

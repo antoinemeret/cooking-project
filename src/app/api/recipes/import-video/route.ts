@@ -359,31 +359,114 @@ async function structureRecipe(transcription: string, metadata?: { title?: strin
     const content = rawResponse.text
     console.log('🤖 Claude raw response (first 500 chars):', content.substring(0, 500))
 
-    // Extract JSON from Claude response
+    // Extract JSON from Claude response with robust parsing
     let jsonContent = content
     
     // Try to find JSON in code blocks first
     const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/)
     if (jsonMatch) {
-      jsonContent = jsonMatch[1]
+      jsonContent = jsonMatch[1].trim()
       console.log('✅ Found JSON in code block')
     } else {
-      // Try to find JSON in the response body
+      // Try to find JSON in the response body with better parsing
       const jsonStart = content.indexOf('{')
-      const jsonEnd = content.lastIndexOf('}')
-      if (jsonStart !== -1 && jsonEnd !== -1) {
-        jsonContent = content.substring(jsonStart, jsonEnd + 1)
-        console.log('✅ Found JSON in response body')
+      if (jsonStart !== -1) {
+        // Find the matching closing brace by counting braces
+        let braceCount = 0
+        let jsonEnd = jsonStart
+        for (let i = jsonStart; i < content.length; i++) {
+          if (content[i] === '{') braceCount++
+          if (content[i] === '}') braceCount--
+          if (braceCount === 0) {
+            jsonEnd = i
+            break
+          }
+        }
+        
+        if (braceCount === 0) {
+          jsonContent = content.substring(jsonStart, jsonEnd + 1).trim()
+          console.log('✅ Found JSON in response body')
+        } else {
+          console.log('❌ No valid JSON found in response')
+          throw new Error('No valid JSON found in Claude response')
+        }
       } else {
         console.log('❌ No JSON found in response')
         throw new Error('No valid JSON found in Claude response')
       }
     }
     
+    // Additional cleanup: try to find the first complete JSON object
+    // This handles cases where there might be multiple JSON objects or text after
+    try {
+      // Try to parse the current content first
+      JSON.parse(jsonContent)
+      console.log('✅ JSON is already valid')
+    } catch (firstError) {
+      console.log('⚠️ JSON needs cleaning, attempting to fix...')
+      
+      // Try to find the first complete JSON object by looking for the first valid JSON
+      const lines = jsonContent.split('\n')
+      let validJson = ''
+      let foundValidJson = false
+      
+      for (let i = 0; i < lines.length; i++) {
+        const testJson = lines.slice(0, i + 1).join('\n')
+        try {
+          JSON.parse(testJson)
+          validJson = testJson
+          foundValidJson = true
+          break
+        } catch (e) {
+          // Continue trying
+        }
+      }
+      
+      if (foundValidJson) {
+        console.log('✅ Found valid JSON by line-by-line parsing')
+        jsonContent = validJson
+      } else {
+        // Last resort: try to find JSON between the first { and last }
+        const firstBrace = jsonContent.indexOf('{')
+        const lastBrace = jsonContent.lastIndexOf('}')
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          const candidateJson = jsonContent.substring(firstBrace, lastBrace + 1)
+          try {
+            JSON.parse(candidateJson)
+            console.log('✅ Found valid JSON using first/last brace method')
+            jsonContent = candidateJson
+          } catch (e) {
+            console.log('❌ All JSON extraction methods failed')
+            throw new Error('Could not extract valid JSON from response')
+          }
+        }
+      }
+    }
+    
     console.log('📋 Extracted JSON content:', jsonContent)
-    const parsed = JSON.parse(jsonContent)
-    console.log('✅ Successfully parsed recipe structure:', parsed)
-    return parsed
+    console.log('📋 JSON content length:', jsonContent.length)
+    console.log('📋 JSON content ends with:', jsonContent.slice(-50))
+    
+    try {
+      const parsed = JSON.parse(jsonContent)
+      console.log('✅ Successfully parsed recipe structure:', parsed)
+      return parsed
+    } catch (parseError) {
+      console.error('❌ JSON parsing failed in import-video route:', parseError)
+      console.error('❌ Full JSON content length:', jsonContent.length)
+      console.error('❌ Full JSON content:', jsonContent)
+      console.error('❌ JSON content at position 145:', jsonContent.substring(140, 150))
+      console.error('❌ Character at position 145:', jsonContent.charAt(145))
+      console.error('❌ Characters around position 145:', jsonContent.substring(140, 155))
+      
+      // Try to find where the JSON actually ends
+      const firstBrace = jsonContent.indexOf('{')
+      const lastBrace = jsonContent.lastIndexOf('}')
+      console.error('❌ First brace at:', firstBrace, 'Last brace at:', lastBrace)
+      console.error('❌ Content between braces:', jsonContent.substring(firstBrace, lastBrace + 1))
+      
+      throw new Error(`JSON parsing failed: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`)
+    }
   } catch (error) {
     console.error('Recipe structuring failed:', error)
     throw new Error(`Recipe structuring failed: ${error instanceof Error ? error.message : 'Unknown error'}`)

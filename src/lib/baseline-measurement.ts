@@ -6,6 +6,7 @@
  */
 
 import { TEST_DATASETS, TEST_URLS } from '@/data/test-dataset'
+import type { TestUrl } from '@/types/comparison'
 import { prisma } from '@/lib/prisma'
 
 export interface BaselineMetrics {
@@ -298,35 +299,35 @@ function generateRecommendations(metrics: BaselineMetrics): string[] {
  */
 async function storeBaselineResults(report: BaselineReport): Promise<void> {
   try {
-    // Store in performance metrics table
+    // Store in PerformanceMetrics table (schema-defined fields)
+    const times = report.results.map(r => r.processingTime)
+    const fastest = times.length ? Math.min(...times) : 0
+    const slowest = times.length ? Math.max(...times) : 0
+
     await prisma.performanceMetrics.upsert({
-      where: { 
-        technology_dataset: {
-          technology: 'ollama',
-          dataset: report.dataset
-        }
+      where: {
+        technologyName: 'ollama'
       },
       update: {
-        totalRequests: report.metrics.totalRequests,
-        successfulRequests: report.metrics.successfulRequests,
-        failedRequests: report.metrics.failedRequests,
-        averageTime: report.metrics.averageProcessingTime,
-        medianTime: report.metrics.medianProcessingTime,
-        p95Time: report.metrics.p95ProcessingTime,
+        totalTests: report.metrics.totalRequests,
+        successfulParses: report.metrics.successfulRequests,
+        failedParses: report.metrics.failedRequests,
+        averageProcessingTime: report.metrics.averageProcessingTime,
         successRate: report.metrics.successRate,
-        lastUpdated: report.timestamp
+        fastestParse: fastest,
+        slowestParse: slowest,
+        medianProcessingTime: report.metrics.medianProcessingTime
       },
       create: {
-        technology: 'ollama',
-        dataset: report.dataset,
-        totalRequests: report.metrics.totalRequests,
-        successfulRequests: report.metrics.successfulRequests,
-        failedRequests: report.metrics.failedRequests,
-        averageTime: report.metrics.averageProcessingTime,
-        medianTime: report.metrics.medianProcessingTime,
-        p95Time: report.metrics.p95ProcessingTime,
+        technologyName: 'ollama',
+        totalTests: report.metrics.totalRequests,
+        successfulParses: report.metrics.successfulRequests,
+        failedParses: report.metrics.failedRequests,
+        averageProcessingTime: report.metrics.averageProcessingTime,
         successRate: report.metrics.successRate,
-        lastUpdated: report.timestamp
+        fastestParse: fastest,
+        slowestParse: slowest,
+        medianProcessingTime: report.metrics.medianProcessingTime
       }
     })
 
@@ -351,10 +352,7 @@ export async function compareAgainstBaseline(
   try {
     const baseline = await prisma.performanceMetrics.findUnique({
       where: {
-        technology_dataset: {
-          technology: 'ollama',
-          dataset
-        }
+        technologyName: 'ollama'
       }
     })
 
@@ -378,19 +376,19 @@ export async function compareAgainstBaseline(
     }
 
     // Compare processing times
-    const timeDiff = currentMetrics.averageProcessingTime - baseline.averageTime
+    const timeDiff = currentMetrics.averageProcessingTime - baseline.averageProcessingTime
     if (timeDiff < -1000) {
       improvements.push(`Average processing time improved by ${Math.abs(timeDiff).toFixed(0)}ms`)
     } else if (timeDiff > 1000) {
       regressions.push(`Average processing time increased by ${timeDiff.toFixed(0)}ms`)
     }
 
-    // Compare P95 times (consistency)
-    const p95Diff = currentMetrics.p95ProcessingTime - baseline.p95Time
-    if (p95Diff < -2000) {
-      improvements.push(`P95 processing time improved by ${Math.abs(p95Diff).toFixed(0)}ms`)
-    } else if (p95Diff > 2000) {
-      regressions.push(`P95 processing time increased by ${p95Diff.toFixed(0)}ms`)
+    // Median consistency (use median due to schema)
+    const medianDiff = currentMetrics.medianProcessingTime - baseline.medianProcessingTime
+    if (medianDiff < -1000) {
+      improvements.push(`Median processing time improved by ${Math.abs(medianDiff).toFixed(0)}ms`)
+    } else if (medianDiff > 1000) {
+      regressions.push(`Median processing time increased by ${medianDiff.toFixed(0)}ms`)
     }
 
     // Overall assessment

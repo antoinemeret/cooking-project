@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Clock, Star, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp } from "lucide-react"
-import { motion } from "framer-motion"
+import { Clock, Star, ThumbsUp, Eye, CalendarPlus } from "lucide-react"
+// framer-motion removed for simpler rendering
+import { RecipeSheet } from '@/components/recipes/RecipeSheet'
+import { RecipeSheetDesktop } from '@/components/recipes/RecipeSheetDesktop'
 
 export interface RecipeSuggestion {
   recipe: {
@@ -37,8 +39,16 @@ export function RecipeCard({
 }: RecipeCardProps) {
   const [isProcessing, setIsProcessing] = useState(false)
   const { recipe, reason } = suggestion
-  const [showDeclineOptions, setShowDeclineOptions] = useState(false)
-  const declineReasons = ["I'm not in the mood for cooking", "I'm not feeling well", "I'm busy", "I'm not hungry"]
+  // Decline options removed per updated design
+  const [isSheetOpen, setIsSheetOpen] = useState(false)
+  const [isDesktop, setIsDesktop] = useState(false)
+
+  useEffect(() => {
+    const update = () => setIsDesktop(typeof window !== 'undefined' && window.innerWidth >= 1024)
+    update()
+    window.addEventListener('resize', update, { passive: true })
+    return () => window.removeEventListener('resize', update)
+  }, [])
 
   // Parse tags safely
   let tags: string[] = []
@@ -79,21 +89,70 @@ export function RecipeCard({
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -20, scale: 0.95 }}
-      transition={{ 
-        duration: 0.4,
-        ease: "easeOut"
-      }}
+    <div
       className={cn(
         "bg-card border border-border rounded-xl p-4 shadow-sm hover:shadow-md transition-all duration-200",
         disabled && "opacity-50 pointer-events-none",
         className
       )}
     >
-      <div className="space-y-3">
+      {/* Mobile layout */}
+      <div className="space-y-3 md:hidden">
+        {/* Hero image */}
+        <div className="w-full h-[161px] overflow-hidden rounded-lg bg-muted">
+          <img
+            src={recipe.image || '/placeholder-recipe.svg'}
+            alt={`${recipe.title} recipe image`}
+            className="w-full h-full object-cover"
+            loading="lazy"
+            onError={(e) => {
+              const img = e.target as HTMLImageElement
+              img.src = '/placeholder-recipe.svg'
+              img.onerror = null
+            }}
+          />
+        </div>
+
+        {/* Meta */}
+        <div className="flex flex-col gap-2">
+          <h3 className="font-bold text-[#212b36] text-[18px] leading-[27px]">
+            {recipe.title}
+          </h3>
+          <p className="text-[#212b36] text-[12px] leading-[18px] line-clamp-2">
+            {recipe.summary}
+          </p>
+          <div className="flex gap-2">
+            <div className="bg-[#f1f1f1] box-border flex items-center gap-1 px-2 py-1 rounded-[4px] text-[#757575] text-[12px]">
+              <Clock className="h-4 w-4 text-[#757575]" />
+              <span>~{recipe.time} min</span>
+            </div>
+          </div>
+          {/* Actions */}
+          <div className="flex items-center justify-center gap-2 pt-3">
+            <button
+              type="button"
+              aria-label="View recipe"
+              className="h-6 w-6 inline-flex items-center justify-center text-[#212b36]"
+              onClick={() => setIsSheetOpen(true)}
+              disabled={disabled}
+            >
+              <Eye className="h-6 w-6" />
+            </button>
+            <button
+              type="button"
+              aria-label="Add to planner"
+              className="h-[25px] w-9 rounded-[18px] bg-[#cff2d7] inline-flex items-center justify-center"
+              onClick={handleAccept}
+              disabled={disabled}
+            >
+              <CalendarPlus className="h-4 w-4 text-[#1f7a3f]" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Desktop layout */}
+      <div className="hidden md:block space-y-3">
         {/* Recipe Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1">
@@ -162,6 +221,16 @@ export function RecipeCard({
         {/* Action Buttons */}
         <div className="flex gap-2 pt-2">
           <Button
+            onClick={() => setIsSheetOpen(true)}
+            disabled={disabled}
+            variant="outline"
+            className="flex-1"
+            size="sm"
+          >
+            <Eye className="h-4 w-4 mr-2" />
+            View
+          </Button>
+          <Button
             onClick={handleAccept}
             disabled={disabled}
             className="flex-1 bg-green-600 hover:bg-green-700 text-white transition-colors duration-200"
@@ -170,52 +239,31 @@ export function RecipeCard({
             <ThumbsUp className="h-4 w-4 mr-2" />
             Accept Recipe
           </Button>
-          <Button
-            onClick={() => setShowDeclineOptions(!showDeclineOptions)}
-            disabled={disabled}
-            variant="outline"
-            className="flex-1 border-red-200 text-red-700 hover:bg-red-50 transition-colors duration-200"
-            size="sm"
-          >
-            <ThumbsDown className="h-4 w-4 mr-2" />
-            Decline
-            {showDeclineOptions ? (
-              <ChevronUp className="h-4 w-4 ml-1" />
-            ) : (
-              <ChevronDown className="h-4 w-4 ml-1" />
-            )}
-          </Button>
+          {/* Decline removed for now */}
         </div>
-
-        {/* Decline Options */}
-        {showDeclineOptions && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2 }}
-            className="space-y-2 pt-2 border-t border-border"
-          >
-            <p className="text-sm text-muted-foreground">
-              Why don't you want this recipe? (This helps me suggest better options)
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {declineReasons.map((reason) => (
-                <Button
-                  key={reason}
-                  onClick={() => handleDecline(reason)}
-                  disabled={disabled}
-                  variant="outline"
-                  size="sm"
-                  className="text-xs justify-start hover:bg-muted transition-colors duration-150"
-                >
-                  {reason}
-                </Button>
-              ))}
-            </div>
-          </motion.div>
-        )}
+        {/* Decline options removed */}
       </div>
-    </motion.div>
+
+      {/* Responsive Recipe Sheet */}
+      {isSheetOpen && (
+        isDesktop ? (
+          <RecipeSheetDesktop
+            recipe={recipe as any}
+            isOpen={isSheetOpen}
+            onClose={() => setIsSheetOpen(false)}
+            onAddToPlanner={() => {}}
+            onMoreActions={() => {}}
+          />
+        ) : (
+          <RecipeSheet
+            recipe={recipe as any}
+            isOpen={isSheetOpen}
+            onClose={() => setIsSheetOpen(false)}
+            onAddToPlanner={() => {}}
+            onMoreActions={() => {}}
+          />
+        )
+      )}
+    </div>
   )
 } 

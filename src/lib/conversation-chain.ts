@@ -358,7 +358,16 @@ What would you like to try instead? 🍳`
     this.addMessage(sessionId, 'assistant', aiResult.response)
 
     // Extract recipe suggestions from response if any
-    const suggestedRecipes = this.extractRecipeSuggestions(aiResult.response, availableRecipes)
+    let suggestedRecipes = this.extractRecipeSuggestions(aiResult.response, availableRecipes)
+
+    // Fallback: if the AI response didn't explicitly name recipes, still provide top matches
+    if (suggestedRecipes.length === 0 && availableRecipes.length > 0) {
+      suggestedRecipes = availableRecipes.slice(0, 3).map(r => ({
+        recipe: r,
+        reason: 'Based on your criteria',
+        confidence: 0.6
+      }))
+    }
 
     session.updatedAt = new Date()
     globalSessionStore.setSession(sessionId, session) // Update the session

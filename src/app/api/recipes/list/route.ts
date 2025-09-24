@@ -4,10 +4,23 @@ import { prisma } from '@/lib/prisma'
 export async function GET(req: NextRequest) {
   try {
     const recipes = await prisma.recipe.findMany({
-      include: { ingredients: true }
+      include: { 
+        ingredients: true 
+      }
     })
-    return NextResponse.json({ recipes })
+    
+    // Parse rawIngredients JSON string for each recipe
+    const recipesWithParsedIngredients = recipes.map(recipe => ({
+      ...recipe,
+      ingredients: recipe.rawIngredients ? JSON.parse(recipe.rawIngredients) : []
+    }))
+    
+    return NextResponse.json({ recipes: recipesWithParsedIngredients })
   } catch (err) {
-    return NextResponse.json({ error: 'Server error' }, { status: 500 })
+    console.error('Error in /api/recipes/list:', err)
+    return NextResponse.json({ 
+      error: 'Server error', 
+      details: err instanceof Error ? err.message : 'Unknown error' 
+    }, { status: 500 })
   }
 } 

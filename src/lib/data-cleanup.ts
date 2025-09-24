@@ -286,7 +286,7 @@ export async function performComprehensiveCleanup(options: {
   const {
     archiveOlderThanDays = 60,
     deleteArchivedOlderThanDays = 180,
-    cleanupTestUrls = false,
+    cleanupTestUrls: doCleanupTestUrls = false,
     resetMetrics = false,
     dryRun = false
   } = options
@@ -316,7 +316,7 @@ export async function performComprehensiveCleanup(options: {
     result.errors.push(...deleteResult.errors)
 
     // Step 3: Clean up test URLs if requested
-    if (cleanupTestUrls) {
+    if (doCleanupTestUrls) {
       const testPatterns = ['localhost', 'example.com', 'test.', '.test', 'staging.', 'dev.']
       const testCleanup = await cleanupTestUrls(testPatterns, dryRun)
       result.deletedComparisons += testCleanup.deletedComparisons

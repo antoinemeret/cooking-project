@@ -1,16 +1,33 @@
 "use client"
 
-import { useState, useEffect, useRef } from 'react'
-import { DataTable } from './data-table'
+import { useState, useEffect, useRef, ChangeEvent } from 'react'
+import { RecipeCard } from '@/components/recipes/RecipeCard'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Plus, Search } from 'lucide-react'
+import { toast } from 'sonner'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 
 export default function RecipesPage() {
   const [recipes, setRecipes] = useState([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
   const [pullDistance, setPullDistance] = useState(0)
   const [isPulling, setIsPulling] = useState(false)
   const startY = useRef(0)
   const containerRef = useRef<HTMLDivElement>(null)
+
+  // Add recipe functionality
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [isManualMode, setIsManualMode] = useState(false)
+  const [isUrlInputDialogOpen, setIsUrlInputDialogOpen] = useState(false)
+  const [importUrl, setImportUrl] = useState("")
+  const [importError, setImportError] = useState("")
+  const [isImporting, setIsImporting] = useState(false)
+  const [importStatus, setImportStatus] = useState("Add new")
+  const photoInputRef = useRef<HTMLInputElement>(null)
 
   async function fetchRecipes() {
     setLoading(true)
@@ -24,6 +41,109 @@ export default function RecipesPage() {
     setRefreshing(true)
     fetchRecipes().finally(() => setRefreshing(false))
   }
+
+  const handleAddToPlanner = async (recipeId: number) => {
+    try {
+      const response = await fetch('/api/planner', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipeId, userId: 'user123' })
+      })
+
+      if (response.ok) {
+        toast.success('Recipe added to planner!')
+      } else {
+        const data = await response.json().catch(() => ({}))
+        if (response.status === 409) {
+          toast.info('Recipe already in planner')
+        } else {
+          toast.error(data.error || 'Failed to add recipe to planner')
+        }
+      }
+    } catch (error) {
+      console.error('Add to planner error:', error)
+      toast.error('Failed to add recipe to planner')
+    }
+  }
+
+  const handleMoreActions = async (recipeId: number, action: string) => {
+    switch (action) {
+      case 'edit':
+        // Edit functionality is now handled in RecipeSheet component
+        break
+      case 'favorite':
+        // TODO: Implement add to favorites functionality
+        toast.info('Add to favorites functionality coming soon')
+        break
+      case 'delete':
+        // Delete functionality is now handled in RecipeSheet component
+        // This case is called after successful deletion to refresh the list
+        toast.success('Recipe deleted successfully')
+        fetchRecipes() // Refresh the list
+        break
+      case 'refresh':
+        // Refresh the recipe list after edit
+        fetchRecipes()
+        break
+      default:
+        break
+    }
+  }
+
+  // Add recipe handlers
+  const handleManualAdd = () => {
+    setIsImportDialogOpen(true)
+    setIsManualMode(true)
+  }
+
+  const handleLinkAdd = () => {
+    setIsUrlInputDialogOpen(true)
+  }
+
+  const handlePhotoAdd = () => {
+    photoInputRef.current?.click()
+  }
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    setIsImporting(true)
+    setImportStatus("Uploading...")
+    const formData = new FormData()
+    formData.append("file", file)
+
+    try {
+      const response = await fetch("/api/recipes/import-photo", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error("Upload failed")
+      }
+
+      const result = await response.json()
+      if (result.success) {
+        toast.success("Recipe imported successfully!")
+        fetchRecipes() // Refresh the recipes list
+      } else {
+        throw new Error(result.error || "Import failed")
+      }
+    } catch (error) {
+      console.error("Photo import error:", error)
+      toast.error("Failed to import recipe from photo")
+    } finally {
+      setIsImporting(false)
+      setImportStatus("Add new")
+    }
+  }
+
+  // Filter recipes based on search term
+  const filteredRecipes = recipes.filter((recipe: any) =>
+    recipe.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    recipe.summary.toLowerCase().includes(searchTerm.toLowerCase())
+  )
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (containerRef.current?.scrollTop === 0) {
@@ -54,6 +174,16 @@ export default function RecipesPage() {
 
   useEffect(() => {
     fetchRecipes()
+  }, [])
+
+  // Listen for recipe added event from navigation
+  useEffect(() => {
+    const handleRecipeAdded = () => {
+      fetchRecipes()
+    }
+
+    window.addEventListener('recipeAdded', handleRecipeAdded)
+    return () => window.removeEventListener('recipeAdded', handleRecipeAdded)
   }, [])
 
   return (
@@ -90,8 +220,71 @@ export default function RecipesPage() {
         </div>
       )}
       
-      <h1 className="text-xl sm:text-2xl font-bold mb-3 sm:mb-4">Recipes</h1>
-      <DataTable recipes={recipes} onRefresh={handleRefresh} loading={loading || refreshing} />
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl sm:text-2xl font-bold">Recipes</h1>
+        <Button size="sm" className="gap-2 hidden sm:flex">
+          <Plus className="h-4 w-4" />
+          Add Recipe
+        </Button>
+      </div>
+
+      {/* Search Bar */}
+      <div className="relative mb-6">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search recipes..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mr-2"></div>
+          <span>Loading recipes...</span>
+        </div>
+      )}
+
+      {/* Recipe Cards */}
+      {!loading && (
+        <div className="space-y-4">
+          {filteredRecipes.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="text-muted-foreground mb-4">
+                {searchTerm ? 'No recipes found matching your search.' : 'No recipes yet.'}
+              </div>
+              {!searchTerm && (
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add your first recipe
+                </Button>
+              )}
+            </div>
+          ) : (
+            filteredRecipes.map((recipe: any) => (
+              <RecipeCard
+                key={recipe.id}
+                recipe={recipe}
+                onAddToPlanner={handleAddToPlanner}
+                onMoreActions={handleMoreActions}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Hidden file input for photo import */}
+      <input
+        type="file"
+        ref={photoInputRef}
+        accept="image/jpeg,image/png"
+        className="hidden"
+        onChange={handleFileChange}
+        disabled={isImporting}
+      />
     </div>
   )
 }

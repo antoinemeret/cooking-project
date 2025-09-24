@@ -417,31 +417,41 @@ export function DataTable({ recipes, onRefresh, loading }: { recipes: Recipe[], 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
+
         const chunk = decoder.decode(value, { stream: true })
-        const eventData = JSON.parse(chunk)
+        const lines = chunk.split('\n').filter(line => line.trim())
+        
+        for (const line of lines) {
+          try {
+            const eventData = JSON.parse(line)
 
-        if (eventData.status) {
-          setImportStatus(eventData.status)
-        }
+            if (eventData.status) {
+              setImportStatus(eventData.status)
+            }
 
-        if (eventData.status === "done") {
-          setImportedRecipe(eventData.data as ImportedRecipe)
-          setIsImportDialogOpen(true)
-          setIsManualMode(false)
-          setImportStatus("Done!")
-        }
+            if (eventData.status === "done") {
+              setImportedRecipe(eventData.data as ImportedRecipe)
+              setIsImportDialogOpen(true)
+              setIsManualMode(false)
+              setImportStatus("Done!")
+            }
 
-        if (eventData.status === "error") {
-          toast.error("Could not read recipe. Please try a clearer photo.", {
-            action: {
-              label: "Import Manually",
-              onClick: () => {
-                setImportedRecipe({ title: "", rawIngredients: [], instructions: "", tags: [] })
-                setIsManualMode(true)
-                setIsImportDialogOpen(true)
-              },
-            },
-          })
+            if (eventData.status === "error") {
+              toast.error("Could not read recipe. Please try a clearer photo.", {
+                action: {
+                  label: "Import Manually",
+                  onClick: () => {
+                    setImportedRecipe({ title: "", rawIngredients: [], instructions: "", tags: [] })
+                    setIsManualMode(true)
+                    setIsImportDialogOpen(true)
+                  },
+                },
+              })
+            }
+          } catch (parseError) {
+            console.error('Error parsing photo import event (data-table):', parseError)
+            console.error('Problematic line:', line)
+          }
         }
       }
     } catch (error) {
