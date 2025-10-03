@@ -6,21 +6,20 @@ import { ArrowLeft, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { AssistantRouteGuard, useAssistantNavigation } from '@/components/assistant/AssistantRouteGuard'
+import { VoiceRecordButton } from '@/components/assistant/VoiceRecordButton'
 
 // Placeholder components for each step (to be implemented in later tasks)
 function VoiceRecordingStep() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[400px] space-y-6">
-      <div className="w-32 h-32 bg-gray-200 rounded-full flex items-center justify-center">
-        <div className="w-16 h-16 bg-red-500 rounded-full animate-pulse" />
-      </div>
-      <h2 className="text-2xl font-semibold">Enregistrer</h2>
+      <h2 className="text-2xl font-semibold">Consigne</h2>
       <p className="text-muted-foreground text-center max-w-sm">
         Appuyez sur le bouton pour enregistrer vos consignes de repas
       </p>
-      <Button size="lg" className="w-48">
-        Commencer l'enregistrement
-      </Button>
+      <VoiceRecordButton />
+      <p className="text-sm text-muted-foreground text-center max-w-xs">
+        Exemple: "Je veux 2 repas avec des légumes de saison, sans gluten"
+      </p>
     </div>
   )
 }

@@ -39,13 +39,13 @@
   - [x] 1.5 Add route guards to preserve state when navigating back/forward
   - [x] 1.6 Basic unit tests for state transitions
 
-- [ ] 2.0 Implement voice recording UI and transcription API
-  - [ ] 2.1 Build `VoiceRecordButton` with idle/recording/processing states
-  - [ ] 2.2 Capture audio (WebM/AAC 16kHz), enforce 60s max, real-time recording signal
-  - [ ] 2.3 Create API `POST /api/voice/transcribe` (Whisper), return { transcript, confidence }
-  - [ ] 2.4 Handle connectivity errors and retries (exponential backoff on client)
-  - [ ] 2.5 Wire result into state and proceed to interpretation step
-  - [ ] 2.6 Tests: component behavior, API handler (mock provider)
+- [x] 2.0 Implement voice recording UI and transcription API
+  - [x] 2.1 Build `VoiceRecordButton` with idle/recording/processing states
+  - [x] 2.2 Capture audio (WebM/AAC 16kHz), enforce 60s max, real-time recording signal
+  - [x] 2.3 Create API `POST /api/voice/transcribe` (Whisper), return { transcript, confidence }
+  - [x] 2.4 Handle connectivity errors and retries (exponential backoff on client)
+  - [x] 2.5 Wire result into state and proceed to interpretation step
+  - [x] 2.6 Tests: component behavior, API handler (mock provider)
 
 - [ ] 3.0 Build constraint parsing pipeline and interpretation summary UI
   - [ ] 3.1 Define Zod schemas for v1 constraints (mealCount, include/exclude, dishType, dietary, cuisine)
