@@ -65,6 +65,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
     if (isProcessingAudio) return // Prevent multiple recordings
 
     // Optimistically switch UI to recording immediately for instant feedback
+    console.log('[VoiceRecordButton] startRecording() clicked')
     startRecording()
 
     try {
@@ -185,6 +186,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
       }
 
   const handleClick = () => {
+    console.log('[VoiceRecordButton] handleClick', { isDisabled, isRecording, isProcessingAudio, state })
     if (isDisabled) return
     if (isRecording) {
       handleStopRecording()
@@ -227,7 +229,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
       
       {/* Debug info - remove this later */}
       <div className="text-xs text-muted-foreground">
-        State: {state} | Recording: {isRecording ? 'Yes' : 'No'} | Processing: {isProcessingAudio ? 'Yes' : 'No'}
+        State: {state} | Recording: {isRecording ? 'Yes' : 'No'} | Processing: {isProcessingAudio ? 'Yes' : 'No'} | Disabled: {isDisabled ? 'Yes' : 'No'}
       </div>
       
       {/* Recording timer */}
