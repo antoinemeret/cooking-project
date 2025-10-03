@@ -9,7 +9,8 @@ import {
   PerMealConstraints, 
   SuggestionSections, 
   RecipeSuggestion, 
-  SelectedRecipe 
+  SelectedRecipe,
+  ConstraintParseResponse
 } from './types'
 
 const initialState = {
@@ -20,8 +21,9 @@ const initialState = {
   isRecording: false,
   transcriptionResult: null,
   
-  // Constraints
+  // Constraints and interpretation
   constraints: null,
+  interpretation: null,
   
   // Current meal being suggested
   currentMealIndex: 0,
@@ -72,13 +74,22 @@ export const useAssistantStore = create<AssistantStoreType>()(
         }, false, 'setTranscriptionResult')
       },
 
-      // Constraints
+      // Constraints and interpretation
       setConstraints: (constraints: Constraints) => {
         set({ 
-          constraints,
+          constraints, 
           currentState: 'editing',
           isLoading: false 
         }, false, 'setConstraints')
+      },
+      
+      setInterpretation: (interpretation: ConstraintParseResponse) => {
+        set({ 
+          interpretation,
+          constraints: interpretation.constraints,
+          currentState: 'editing',
+          isLoading: false 
+        }, false, 'setInterpretation')
       },
 
       updateGeneralConstraints: (updates: Partial<GeneralConstraints>) => {

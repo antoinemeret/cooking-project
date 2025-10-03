@@ -7,6 +7,8 @@ import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 import { AssistantRouteGuard, useAssistantNavigation } from '@/components/assistant/AssistantRouteGuard'
 import { VoiceRecordButton } from '@/components/assistant/VoiceRecordButton'
+import { InterpretationSummary } from '@/components/assistant/InterpretationSummary'
+import { ConstraintParseResponse } from '@/lib/assistant/types'
 
 // Placeholder components for each step (to be implemented in later tasks)
 function VoiceRecordingStep() {
@@ -25,22 +27,70 @@ function VoiceRecordingStep() {
 }
 
 function InterpretationStep() {
+  const { interpretation, setInterpretation, setError, setLoading } = useAssistantStore()
+  const { transcriptionResult } = useAssistantStore()
+
+  // Parse constraints when component mounts
+  useEffect(() => {
+    if (transcriptionResult && !interpretation) {
+      parseConstraints(transcriptionResult.transcript)
+    }
+  }, [transcriptionResult, interpretation])
+
+  const parseConstraints = async (transcript: string) => {
+    try {
+      setLoading(true)
+      
+      const response = await fetch('/api/constraints/parse', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transcript,
+          language: 'fr'
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const result: ConstraintParseResponse = await response.json()
+      setInterpretation(result)
+    } catch (error) {
+      console.error('Constraint parsing error:', error)
+      setError('Erreur lors de l\'interprétation des consignes. Veuillez réessayer.')
+    }
+  }
+
+  const handleValidate = () => {
+    // Move to editing step
+    // This will be implemented in the next task
+    console.log('Validating interpretation')
+  }
+
+  const handleEdit = () => {
+    // Move to constraint editing step
+    // This will be implemented in the next task
+    console.log('Editing constraints')
+  }
+
+  if (!interpretation) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-6">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <p className="text-muted-foreground">Interprétation des consignes...</p>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex flex-col space-y-6">
-      <h2 className="text-2xl font-semibold">Consignes</h2>
-      <div className="bg-muted p-4 rounded-lg">
-        <p className="text-sm text-muted-foreground mb-2">Voilà ce que j'ai compris :</p>
-        <p className="text-base">
-          <span className="font-medium">2 repas</span> avec des 
-          <span className="font-medium text-blue-600"> légumes de saison</span> et 
-          <span className="font-medium text-green-600"> sans gluten</span>
-        </p>
-      </div>
-      <div className="flex gap-3">
-        <Button className="flex-1">Valider</Button>
-        <Button variant="outline" className="flex-1">Corriger</Button>
-      </div>
-    </div>
+    <InterpretationSummary
+      interpretation={interpretation}
+      onValidate={handleValidate}
+      onEdit={handleEdit}
+    />
   )
 }
 

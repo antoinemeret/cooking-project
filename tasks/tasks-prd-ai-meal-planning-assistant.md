@@ -47,13 +47,13 @@
   - [x] 2.5 Wire result into state and proceed to interpretation step
   - [x] 2.6 Tests: component behavior, API handler (mock provider)
 
-- [ ] 3.0 Build constraint parsing pipeline and interpretation summary UI
-  - [ ] 3.1 Define Zod schemas for v1 constraints (mealCount, include/exclude, dishType, dietary, cuisine)
-  - [ ] 3.2 Create `POST /api/constraints/parse` using Claude with strict JSON output
-  - [ ] 3.3 Validate LLM JSON with Zod; on failure, return partial interpretation
-  - [ ] 3.4 Implement summary UI with highlighted extracted values and conflict flags
-  - [ ] 3.5 Mixed FR/EN behavior: show mixed when confidence high, else preferred UI language
-  - [ ] 3.6 Tests: schema validation, parsing fallback paths
+- [x] 3.0 Build constraint parsing pipeline and interpretation summary UI
+  - [x] 3.1 Define Zod schemas for v1 constraints (mealCount, include/exclude, dishType, dietary, cuisine)
+  - [x] 3.2 Create `POST /api/constraints/parse` using Claude with strict JSON output
+  - [x] 3.3 Validate LLM JSON with Zod; on failure, return partial interpretation
+  - [x] 3.4 Implement summary UI with highlighted extracted values and conflict flags
+  - [x] 3.5 Mixed FR/EN behavior: show mixed when confidence high, else preferred UI language
+  - [x] 3.6 Tests: schema validation, parsing fallback paths
 
 - [ ] 4.0 Implement constraint editing (general and per-meal) with persistence
   - [ ] 4.1 Build `ConstraintSection` (general, Plat 1..N) with separators

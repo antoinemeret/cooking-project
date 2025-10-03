@@ -18,25 +18,113 @@ export const ConstraintTypeSchema = z.enum([
   'excludeIngredients', 
   'dishType',
   'dietaryRestrictions',
-  'cuisineStyle'
+  'cuisineStyle',
+  'maxPrepTime',
+  'maxCookTime',
+  'cookingMethod',
+  'servings',
+  'mealContext'
 ])
 
 export type ConstraintType = z.infer<typeof ConstraintTypeSchema>
 
+// Valid values for each constraint type
+export const DishTypeSchema = z.enum([
+  'appetizer',
+  'main',
+  'dessert',
+  'side',
+  'salad',
+  'soup',
+  'pasta',
+  'pizza',
+  'sandwich',
+  'breakfast',
+  'lunch',
+  'dinner',
+  'snack'
+])
+
+export const DietaryRestrictionsSchema = z.enum([
+  'vegetarian',
+  'vegan',
+  'gluten-free',
+  'dairy-free',
+  'nut-free',
+  'soy-free',
+  'keto',
+  'paleo',
+  'low-carb',
+  'low-fat',
+  'high-protein',
+  'halal',
+  'kosher'
+])
+
+export const CuisineStyleSchema = z.enum([
+  'italian',
+  'french',
+  'mexican',
+  'chinese',
+  'japanese',
+  'indian',
+  'thai',
+  'lebanese',
+  'mediterranean',
+  'american',
+  'greek',
+  'spanish',
+  'german',
+  'korean'
+])
+
+export const CookingMethodSchema = z.enum([
+  'oven',
+  'stovetop',
+  'grill',
+  'raw',
+  'steam',
+  'fry',
+  'bake',
+  'roast',
+  'boil',
+  'sauté',
+  'slow-cook',
+  'pressure-cook'
+])
+
+export const MealContextSchema = z.enum([
+  'quick-dinner',
+  'dinner-party',
+  'meal-prep',
+  'weekend-cooking',
+  'comfort-food',
+  'healthy',
+  'indulgent',
+  'family-friendly',
+  'romantic',
+  'casual'
+])
+
 // General constraints (apply to all meals)
 export const GeneralConstraintsSchema = z.object({
-  mealCount: z.number().min(1).max(7).optional(),
+  mealCount: z.number().int().min(1).max(7).default(1),
   seasonal: z.boolean().optional()
 })
 
 // Per-meal constraints
 export const PerMealConstraintsSchema = z.object({
-  mealIndex: z.number().min(0),
-  includeIngredients: z.array(z.string()).optional(),
-  excludeIngredients: z.array(z.string()).optional(),
-  dishType: z.array(z.string()).optional(),
-  dietaryRestrictions: z.array(z.string()).optional(),
-  cuisineStyle: z.array(z.string()).optional()
+  mealIndex: z.number().int().min(0),
+  includeIngredients: z.array(z.string().min(1)).optional(),
+  excludeIngredients: z.array(z.string().min(1)).optional(),
+  dishType: z.array(DishTypeSchema).optional(),
+  dietaryRestrictions: z.array(DietaryRestrictionsSchema).optional(),
+  cuisineStyle: z.array(CuisineStyleSchema).optional(),
+  maxPrepTime: z.number().int().min(0).optional(), // in minutes
+  maxCookTime: z.number().int().min(0).optional(), // in minutes
+  cookingMethod: z.array(CookingMethodSchema).optional(),
+  servings: z.number().int().min(1).optional(),
+  mealContext: z.array(MealContextSchema).optional()
 })
 
 // Full constraints structure
@@ -46,9 +134,37 @@ export const ConstraintsSchema = z.object({
   conflicts: z.array(z.string()).optional()
 })
 
+// Constraint parsing API request
+export const ConstraintParseRequestSchema = z.object({
+  transcript: z.string().min(1),
+  language: z.string().optional().default('fr')
+})
+
+// Constraint parsing API response
+export const ConstraintParseResponseSchema = z.object({
+  constraints: ConstraintsSchema,
+  interpretation: z.string(), // Human-readable interpretation
+  confidence: z.number().min(0).max(1),
+  extractedValues: z.record(z.string(), z.any()).optional(), // Key-value pairs of extracted values
+  language: z.string().optional()
+})
+
+// Partial interpretation when parsing fails
+export const PartialInterpretationSchema = z.object({
+  constraints: ConstraintsSchema.partial(),
+  interpretation: z.string(),
+  confidence: z.number().min(0).max(1),
+  extractedValues: z.record(z.string(), z.any()).optional(),
+  language: z.string().optional(),
+  errors: z.array(z.string()).optional()
+})
+
 export type GeneralConstraints = z.infer<typeof GeneralConstraintsSchema>
 export type PerMealConstraints = z.infer<typeof PerMealConstraintsSchema>
 export type Constraints = z.infer<typeof ConstraintsSchema>
+export type ConstraintParseRequest = z.infer<typeof ConstraintParseRequestSchema>
+export type ConstraintParseResponse = z.infer<typeof ConstraintParseResponseSchema>
+export type PartialInterpretation = z.infer<typeof PartialInterpretationSchema>
 
 // Voice transcription result
 export const TranscriptionResultSchema = z.object({
