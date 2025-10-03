@@ -19,10 +19,11 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
   const [recordingTime, setRecordingTime] = useState(0)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const isProcessing = state === 'processing' || state === 'interpreting'
-  const isDisabled = disabled || isProcessing
+  const isDisabled = disabled || isProcessing || isProcessingAudio
 
   // Cleanup on unmount
   useEffect(() => {
@@ -60,14 +61,17 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
   }, [isRecording])
 
   const handleStartRecording = async () => {
+    if (isProcessingAudio) return // Prevent multiple recordings
+    
     try {
+      setIsProcessingAudio(true)
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           sampleRate: 16000,
           channelCount: 1,
           echoCancellation: true,
           noiseSuppression: true
-        } 
+        }
       })
 
       const recorder = new MediaRecorder(stream, {
@@ -108,10 +112,11 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
       setAudioChunks(chunks)
       recorder.start(1000) // Collect data every second
       startRecording()
-    } catch (error) {
-      console.error('Error accessing microphone:', error)
-      setError('Impossible d\'accéder au microphone. Vérifiez les permissions.')
-    }
+        } catch (error) {
+          console.error('Error accessing microphone:', error)
+          setError('Impossible d\'accéder au microphone. Vérifiez les permissions.')
+          setIsProcessingAudio(false)
+        }
   }
 
   const handleStopRecording = () => {
@@ -138,9 +143,10 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      const result = await response.json()
-      setTranscriptionResult(result)
-    } catch (error) {
+          const result = await response.json()
+          setTranscriptionResult(result)
+          setIsProcessingAudio(false)
+        } catch (error) {
       console.error('Transcription error:', error)
       
       // Check if we should retry
@@ -162,12 +168,13 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
           setError('Trop de requêtes. Veuillez patienter quelques instants avant de réessayer.')
         } else if (error instanceof Error && error.message.includes('HTTP error! status: 413')) {
           setError('Fichier audio trop volumineux. Veuillez raccourcir votre enregistrement.')
-        } else {
-          setError('Erreur lors de la transcription. Veuillez réessayer.')
+            } else {
+              setError('Erreur lors de la transcription. Veuillez réessayer.')
+            }
+            setIsProcessingAudio(false)
+          }
         }
       }
-    }
-  }
 
   const handleClick = () => {
     if (isDisabled) return
