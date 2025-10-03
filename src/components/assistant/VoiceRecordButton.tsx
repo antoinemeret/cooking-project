@@ -21,11 +21,13 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
   const [isProcessingAudio, setIsProcessingAudio] = useState(false)
+  const [uiRecording, setUiRecording] = useState(false)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const hasTranscribedRef = useRef(false)
 
   const isProcessing = state === 'processing' || state === 'interpreting'
   const isDisabled = disabled || isProcessing || isProcessingAudio
+  const showRecording = uiRecording || isRecording
 
   // Cleanup on unmount
   useEffect(() => {
@@ -68,6 +70,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
     // Optimistically switch UI to recording immediately for instant feedback
     console.log('[VoiceRecordButton] startRecording() clicked')
     startRecording()
+    setUiRecording(true)
     console.log('[VoiceRecordButton] startRecording() called, checking state after...')
     // Check state after a brief delay to see if it updated
     setTimeout(() => {
@@ -135,6 +138,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
         // Revert to idle if we failed to start recording
         setState('idle')
         setIsProcessingAudio(false)
+        setUiRecording(false)
         }
   }
 
@@ -143,6 +147,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
       mediaRecorder.stop()
     }
     stopRecording()
+    setUiRecording(false)
   }
 
   const transcribeAudio = async (audioBlob: Blob, retryCount = 0) => {
@@ -198,7 +203,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
   const handleClick = () => {
     console.log('[VoiceRecordButton] handleClick', { isDisabled, isRecording, isProcessingAudio, state })
     if (isDisabled) return
-    if (isRecording) {
+    if (showRecording) {
       handleStopRecording()
       return
     }
@@ -216,7 +221,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
       <Button
         size='lg'
         className={`relative w-48 h-48 rounded-full text-base font-medium ${
-          isRecording
+          showRecording
             ? 'bg-gradient-to-br from-green-500 to-blue-500 text-white shadow-lg'
             : 'bg-muted text-foreground'
         } ${isDisabled ? 'opacity-60 cursor-not-allowed' : ''} ${className}`}
@@ -224,7 +229,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
         disabled={isDisabled}
       >
         <div className='absolute inset-0 rounded-full flex items-center justify-center'>
-          {isRecording ? (
+          {showRecording ? (
             <Square className='w-10 h-10' />
           ) : (
             <Mic className='w-10 h-10' />
@@ -232,18 +237,18 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
         </div>
         <span className='sr-only'>{getLabel(state, isRecording)}</span>
         {/* Visual pulse when recording */}
-        {isRecording && (
+        {showRecording && (
           <span className='absolute inset-0 rounded-full animate-pulse bg-white/10' />
         )}
       </Button>
       
       {/* Debug info - remove this later */}
       <div className="text-xs text-muted-foreground">
-        State: {state} | Recording: {isRecording ? 'Yes' : 'No'} | Processing: {isProcessingAudio ? 'Yes' : 'No'} | Disabled: {isDisabled ? 'Yes' : 'No'}
+        State: {state} | Recording: {isRecording ? 'Yes' : 'No'} | UIRecording: {uiRecording ? 'Yes' : 'No'} | Processing: {isProcessingAudio ? 'Yes' : 'No'} | Disabled: {isDisabled ? 'Yes' : 'No'}
       </div>
       
       {/* Recording timer */}
-      {isRecording && (
+      {showRecording && (
         <div className="text-center">
           <div className="text-2xl font-mono font-bold text-green-600">
             {formatTime(recordingTime)}
