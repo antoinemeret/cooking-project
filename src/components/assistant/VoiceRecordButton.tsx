@@ -21,6 +21,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
   const [isProcessingAudio, setIsProcessingAudio] = useState(false)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const hasTranscribedRef = useRef(false)
 
   const isProcessing = state === 'processing' || state === 'interpreting'
   const isDisabled = disabled || isProcessing || isProcessingAudio
@@ -81,6 +82,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
       })
 
       const chunks: Blob[] = []
+      hasTranscribedRef.current = false
       
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -89,6 +91,8 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
       }
 
       recorder.onstop = async () => {
+        if (hasTranscribedRef.current) return
+        hasTranscribedRef.current = true
         const audioBlob = new Blob(chunks, { type: 'audio/webm' })
         
         // Check file size (max 5MB)
