@@ -217,6 +217,11 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
         )}
       </Button>
       
+      {/* Debug info - remove this later */}
+      <div className="text-xs text-muted-foreground">
+        State: {state} | Recording: {isRecording ? 'Yes' : 'No'} | Processing: {isProcessingAudio ? 'Yes' : 'No'}
+      </div>
+      
       {/* Recording timer */}
       {isRecording && (
         <div className="text-center">
