@@ -15,7 +15,7 @@ function getLabel (state: string, isRecording: boolean) {
 
 export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRecordButtonProps) {
   const state = useAssistantState()
-  const { isRecording, startRecording, stopRecording, setTranscriptionResult, setError } = useAssistantStore()
+  const { isRecording, startRecording, stopRecording, setTranscriptionResult, setError, setState } = useAssistantStore()
   const [recordingTime, setRecordingTime] = useState(0)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
@@ -62,9 +62,11 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
 
   const handleStartRecording = async () => {
     if (isProcessingAudio) return // Prevent multiple recordings
-    
+
+    // Optimistically switch UI to recording immediately for instant feedback
+    startRecording()
+
     try {
-      setIsProcessingAudio(true)
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           sampleRate: 16000,
@@ -99,6 +101,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
         stream.getTracks().forEach(track => track.stop())
         
         // Send to transcription API
+        setIsProcessingAudio(true)
         await transcribeAudio(audioBlob)
       }
 
@@ -111,11 +114,12 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
       setMediaRecorder(recorder)
       setAudioChunks(chunks)
       recorder.start(1000) // Collect data every second
-      startRecording()
         } catch (error) {
           console.error('Error accessing microphone:', error)
           setError('Impossible d\'accéder au microphone. Vérifiez les permissions.')
-          setIsProcessingAudio(false)
+        // Revert to idle if we failed to start recording
+        setState('idle')
+        setIsProcessingAudio(false)
         }
   }
 
