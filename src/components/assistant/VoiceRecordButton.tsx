@@ -242,22 +242,7 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
         )}
       </Button>
       
-      {/* Debug info - remove this later */}
-      <div className="text-xs text-muted-foreground">
-        State: {state} | Recording: {isRecording ? 'Yes' : 'No'} | UIRecording: {uiRecording ? 'Yes' : 'No'} | Processing: {isProcessingAudio ? 'Yes' : 'No'} | Disabled: {isDisabled ? 'Yes' : 'No'}
-      </div>
-      
-      {/* Recording timer */}
-      {showRecording && (
-        <div className="text-center">
-          <div className="text-2xl font-mono font-bold text-green-600">
-            {formatTime(recordingTime)}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {recordingTime >= 50 ? 'Arrêt automatique dans ' + (60 - recordingTime) + 's' : 'Enregistrement en cours...'}
-          </div>
-        </div>
-      )}
+      {/* Intentionally no extra text/timer; button transformation communicates recording */}
     </div>
   )
 }
