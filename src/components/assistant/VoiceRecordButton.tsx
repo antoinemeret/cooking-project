@@ -15,7 +15,8 @@ function getLabel (state: string, isRecording: boolean) {
 
 export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRecordButtonProps) {
   const state = useAssistantState()
-  const { isRecording, startRecording, stopRecording, setTranscriptionResult, setError, setState } = useAssistantStore()
+  const isRecording = useAssistantStore(state => state.isRecording)
+  const { startRecording, stopRecording, setTranscriptionResult, setError, setState } = useAssistantStore()
   const [recordingTime, setRecordingTime] = useState(0)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
@@ -67,6 +68,15 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
     // Optimistically switch UI to recording immediately for instant feedback
     console.log('[VoiceRecordButton] startRecording() clicked')
     startRecording()
+    console.log('[VoiceRecordButton] startRecording() called, checking state after...')
+    // Check state after a brief delay to see if it updated
+    setTimeout(() => {
+      const currentState = useAssistantStore.getState()
+      console.log('[VoiceRecordButton] State after startRecording:', {
+        isRecording: currentState.isRecording,
+        currentState: currentState.currentState
+      })
+    }, 100)
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
