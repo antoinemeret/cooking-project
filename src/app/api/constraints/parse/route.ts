@@ -7,9 +7,103 @@ import {
   ConstraintsSchema 
 } from '@/lib/assistant/types'
 
-// Mock Claude API client (replace with actual Claude integration)
-const mockClaudeAPI = {
+// Real Claude API client
+const claudeAPI = {
   async parseConstraints(transcript: string, language: string = 'fr') {
+    // Check if Claude API key is available
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.warn('ANTHROPIC_API_KEY not found, falling back to mock parsing')
+      return mockParseConstraints(transcript, language)
+    }
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-haiku-20240307',
+          max_tokens: 1000,
+          messages: [{
+            role: 'user',
+            content: `Extract meal planning constraints from this French text: "${transcript}". Return a JSON object with this exact structure:
+{
+  "general": {
+    "mealCount": number,
+    "seasonal": boolean
+  },
+  "perMeal": [{
+    "mealIndex": 0,
+    "includeIngredients": ["ingredient1", "ingredient2"],
+    "excludeIngredients": ["ingredient3"],
+    "dishType": ["main", "appetizer"],
+    "dietaryRestrictions": ["vegetarian", "gluten-free"],
+    "cuisineStyle": ["italian", "french"],
+    "maxPrepTime": 30,
+    "maxCookTime": 45,
+    "cookingMethod": ["oven", "stovetop"],
+    "servings": 4,
+    "mealContext": ["quick-dinner", "family-friendly"]
+  }],
+  "conflicts": []
+}
+
+Valid values:
+- dishType: appetizer, main, dessert, side, salad, soup, pasta, pizza, sandwich, breakfast, lunch, dinner, snack
+- dietaryRestrictions: vegetarian, vegan, gluten-free, dairy-free, nut-free, soy-free, keto, paleo, low-carb, low-fat, high-protein, halal, kosher
+- cuisineStyle: italian, french, mexican, chinese, japanese, indian, thai, lebanese, mediterranean, american, greek, spanish, german, korean
+- cookingMethod: oven, stovetop, grill, raw, steam, fry, bake, roast, boil, sauté, slow-cook, pressure-cook
+- mealContext: quick-dinner, dinner-party, meal-prep, weekend-cooking, comfort-food, healthy, indulgent, family-friendly, romantic, casual
+
+Extract what you can from the text. If no specific value is mentioned, omit that field. Return only valid JSON.`
+          }]
+        })
+      })
+
+      if (!response.ok) {
+        throw new Error(`Claude API error: ${response.status}`)
+      }
+
+      const result = await response.json()
+      const content = result.content[0].text
+      
+      // Parse the JSON response
+      const parsed = JSON.parse(content)
+      
+      // Generate interpretation
+      const interpretation = `J'ai compris que vous voulez ${parsed.general.mealCount} repas${parsed.general.mealCount > 1 ? 's' : ''}${parsed.general.seasonal ? ' avec des ingrédients de saison' : ''}${parsed.perMeal[0]?.includeIngredients?.length ? ` incluant ${parsed.perMeal[0].includeIngredients.join(', ')}` : ''}${parsed.perMeal[0]?.dietaryRestrictions?.length ? ` avec les restrictions ${parsed.perMeal[0].dietaryRestrictions.join(', ')}` : ''}${parsed.perMeal[0]?.cuisineStyle?.length ? ` de style ${parsed.perMeal[0].cuisineStyle.join(', ')}` : ''}${parsed.perMeal[0]?.maxPrepTime ? ` en moins de ${parsed.perMeal[0].maxPrepTime} minutes` : ''}.`
+      
+      // Calculate confidence
+      const confidence = Math.min(0.9, 0.4 + (Object.keys(parsed).length * 0.1))
+      
+      return {
+        constraints: parsed,
+        interpretation,
+        confidence,
+        extractedValues: {
+          mealCount: parsed.general.mealCount,
+          includeIngredients: parsed.perMeal[0]?.includeIngredients || [],
+          dietaryRestrictions: parsed.perMeal[0]?.dietaryRestrictions || [],
+          cuisineStyle: parsed.perMeal[0]?.cuisineStyle || [],
+          dishType: parsed.perMeal[0]?.dishType || [],
+          maxTime: parsed.perMeal[0]?.maxPrepTime || parsed.perMeal[0]?.maxCookTime,
+          seasonal: parsed.general.seasonal
+        },
+        language
+      }
+    } catch (error) {
+      console.error('Claude API error:', error)
+      console.warn('Falling back to mock parsing due to API error')
+      return mockParseConstraints(transcript, language)
+    }
+  }
+}
+
+// Mock Claude API client (fallback)
+const mockParseConstraints = (transcript: string, language: string = 'fr') => {
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000))
     
@@ -147,7 +241,7 @@ export async function POST(req: Request) {
     const { transcript, language } = validationResult.data
     
     // Parse constraints using Claude API
-    const parseResult = await mockClaudeAPI.parseConstraints(transcript, language)
+    const parseResult = await claudeAPI.parseConstraints(transcript, language)
     
     // Validate the parsed constraints
     const constraintsValidation = ConstraintsSchema.safeParse(parseResult.constraints)

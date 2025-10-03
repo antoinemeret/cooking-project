@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { TranscriptionResultSchema } from '@/lib/assistant/types'
+import OpenAI from 'openai'
 
 // Mock transcription for now - will be replaced with actual Whisper API
 async function mockTranscribe(audioBlob: Blob): Promise<{ transcript: string, confidence: number }> {
@@ -25,38 +26,42 @@ async function mockTranscribe(audioBlob: Blob): Promise<{ transcript: string, co
   }
 }
 
-// TODO: Replace with actual Whisper API integration
+// Real Whisper API integration
 async function transcribeWithWhisper(audioBlob: Blob): Promise<{ transcript: string, confidence: number }> {
-  // This would be the actual Whisper API implementation
-  // For now, we'll use the mock function
-  return mockTranscribe(audioBlob)
-  
-  /* 
-  // Example of how to integrate with OpenAI Whisper API:
-  const formData = new FormData()
-  formData.append('file', audioBlob, 'recording.webm')
-  formData.append('model', 'whisper-1')
-  formData.append('language', 'fr') // French
-  formData.append('response_format', 'verbose_json')
-  
-  const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-    },
-    body: formData
-  })
-  
-  if (!response.ok) {
-    throw new Error(`Whisper API error: ${response.status}`)
+  // Check if OpenAI API key is available
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn('OPENAI_API_KEY not found, falling back to mock transcription')
+    return mockTranscribe(audioBlob)
   }
-  
-  const result = await response.json()
-  return {
-    transcript: result.text,
-    confidence: result.segments?.[0]?.avg_logprob ? Math.exp(result.segments[0].avg_logprob) : 0.8
+
+  try {
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+
+    // Convert Blob to File for OpenAI API
+    const audioFile = new File([audioBlob], 'recording.webm', { type: 'audio/webm' })
+    
+    const response = await openai.audio.transcriptions.create({
+      file: audioFile,
+      model: "whisper-1",
+      language: "fr", // Specify French
+      response_format: "verbose_json",
+    })
+
+    // Whisper doesn't provide per-word confidence, so we estimate overall confidence
+    // based on the response quality and length
+    const confidence = Math.min(0.95, 0.7 + (response.text.length / 100) * 0.1)
+
+    return {
+      transcript: response.text,
+      confidence
+    }
+  } catch (error) {
+    console.error('Whisper API error:', error)
+    console.warn('Falling back to mock transcription due to API error')
+    return mockTranscribe(audioBlob)
   }
-  */
 }
 
 export async function POST(request: NextRequest) {
