@@ -103,7 +103,7 @@ Extract what you can from the text. If no specific value is mentioned, omit that
 }
 
 // Mock Claude API client (fallback)
-const mockParseConstraints = (transcript: string, language: string = 'fr') => {
+const mockParseConstraints = async (transcript: string, language: string = 'fr') => {
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000))
     
