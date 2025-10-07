@@ -16,7 +16,7 @@ function getLabel (state: string, isRecording: boolean) {
 export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRecordButtonProps) {
   const state = useAssistantState()
   const isRecording = useAssistantStore(state => state.isRecording)
-  const { startRecording, stopRecording, setTranscriptionResult, setError, setState } = useAssistantStore()
+  const { startRecording, stopRecording, setTranscriptionResult, setError, setState, setInterpretation } = useAssistantStore()
   const [recordingTime, setRecordingTime] = useState(0)
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
   const [audioChunks, setAudioChunks] = useState<Blob[]>([])
@@ -169,6 +169,26 @@ export function VoiceRecordButton ({ className = '', disabled = false }: VoiceRe
 
           const result = await response.json()
           setTranscriptionResult(result)
+
+          // Immediately parse constraints to guarantee the second request happens
+          try {
+            const parseRes = await fetch('/api/constraints/parse', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ transcript: result.transcript, language: 'fr' })
+            })
+            if (parseRes.ok) {
+              const parsed = await parseRes.json()
+              // Store interpretation; page flow will pick it up
+              // @ts-ignore runtime type checked server-side
+              setInterpretation(parsed)
+            } else {
+              console.error('Constraint parse HTTP error:', parseRes.status)
+            }
+          } catch (e) {
+            console.error('Constraint parse error:', e)
+          }
+
           setIsProcessingAudio(false)
         } catch (error) {
       console.error('Transcription error:', error)
