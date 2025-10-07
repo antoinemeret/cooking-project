@@ -4,7 +4,7 @@ import { useAssistantStore, useAssistantState } from '@/lib/assistant/state'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, X } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { AssistantRouteGuard, useAssistantNavigation } from '@/components/assistant/AssistantRouteGuard'
 import { VoiceRecordButton } from '@/components/assistant/VoiceRecordButton'
 import { InterpretationSummary } from '@/components/assistant/InterpretationSummary'
@@ -27,19 +27,34 @@ function VoiceRecordingStep() {
 }
 
 function InterpretationStep() {
-  const { interpretation, setInterpretation, setError, setLoading } = useAssistantStore()
-  const { transcriptionResult } = useAssistantStore()
+  const interpretation = useAssistantStore(s => s.interpretation)
+  const setInterpretation = useAssistantStore(s => s.setInterpretation)
+  const setError = useAssistantStore(s => s.setError)
+  const setLoading = useAssistantStore(s => s.setLoading)
+  const transcriptionResult = useAssistantStore(s => s.transcriptionResult)
+  const currentState = useAssistantState()
+  const parsedRef = useRef(false)
 
   // Parse constraints when component mounts
   useEffect(() => {
-    if (transcriptionResult && !interpretation) {
-      parseConstraints(transcriptionResult.transcript)
-    }
-  }, [transcriptionResult, interpretation])
+    console.log('[InterpretationStep] mount/effect', {
+      currentState,
+      hasTranscript: !!transcriptionResult,
+      hasInterpretation: !!interpretation,
+      parsedRef: parsedRef.current
+    })
+    if (!transcriptionResult) return
+    if (interpretation) return
+    if (parsedRef.current) return
+    parsedRef.current = true
+    console.log('[InterpretationStep] triggering parse with transcript:', transcriptionResult.transcript)
+    parseConstraints(transcriptionResult.transcript)
+  }, [transcriptionResult, interpretation, currentState])
 
   const parseConstraints = async (transcript: string) => {
     try {
       setLoading(true)
+      console.log('[InterpretationStep] parseConstraints:start')
       
       const response = await fetch('/api/constraints/parse', {
         method: 'POST',
@@ -57,10 +72,17 @@ function InterpretationStep() {
       }
 
       const result: ConstraintParseResponse = await response.json()
-      setInterpretation(result)
+      console.log('[InterpretationStep] parseConstraints:success', result)
+      // Ensure state flip even under Strict Mode by calling the store directly
+      const store = useAssistantStore.getState()
+      if (store.setInterpretation) store.setInterpretation(result)
+      if (store.setState) store.setState('editing')
     } catch (error) {
-      console.error('Constraint parsing error:', error)
+      console.error('[InterpretationStep] parseConstraints:error', error)
       setError('Erreur lors de l\'interprétation des consignes. Veuillez réessayer.')
+    } finally {
+      setLoading(false)
+      console.log('[InterpretationStep] parseConstraints:done')
     }
   }
 
@@ -80,7 +102,7 @@ function InterpretationStep() {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] space-y-6">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        <p className="text-muted-foreground">Interprétation des consignes...</p>
+        <p className="text-muted-foreground">Interprétation des consignes... ({currentState})</p>
       </div>
     )
   }
@@ -145,7 +167,7 @@ function SuggestionsStep() {
     <div className="flex flex-col space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">Consignes > Sélection</h2>
+          <h2 className="text-2xl font-semibold">Consignes {'>'} Sélection</h2>
           <p className="text-muted-foreground">0/2 Plats sélectionnés</p>
         </div>
         <Button variant="ghost" size="sm">
@@ -185,7 +207,7 @@ function ValidationStep() {
     <div className="flex flex-col space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">Consignes > Sélection</h2>
+          <h2 className="text-2xl font-semibold">Consignes {'>'} Sélection</h2>
           <p className="text-muted-foreground">2/2 Plats sélectionnés</p>
         </div>
         <Button variant="ghost" size="sm">
@@ -245,18 +267,15 @@ function ErrorStep() {
 
 function AssistantPageContent() {
   const currentState = useAssistantState()
-  const { reset } = useAssistantStore()
+  const { reset, interpretation } = useAssistantStore()
   const { navigateWithGuard } = useAssistantNavigation()
 
-  // Reset state when component unmounts
+  // Reset state only when component unmounts
   useEffect(() => {
     return () => {
-      // Only reset if we're not in a completed state
-      if (currentState !== 'completed') {
-        reset()
-      }
+      reset()
     }
-  }, [currentState, reset])
+  }, [reset])
 
   const handleClose = () => {
     const shouldNavigate = navigateWithGuard('/planner')
@@ -266,15 +285,27 @@ function AssistantPageContent() {
   }
 
   const renderCurrentStep = () => {
+    console.log('[AssistantPage] renderCurrentStep', { currentState, hasInterpretation: !!interpretation })
     switch (currentState) {
       case 'idle':
       case 'recording':
         return <VoiceRecordingStep />
       case 'processing':
       case 'interpreting':
-        return <LoadingStep />
+        return <InterpretationStep />
       case 'editing':
-        return <ConstraintEditingStep />
+        // Render the summary directly when editing
+        if (!interpretation) {
+          console.warn('[AssistantPage] editing state without interpretation, falling back to InterpretationStep')
+          return <InterpretationStep />
+        }
+        return (
+          <InterpretationSummary
+            interpretation={interpretation}
+            onValidate={() => console.log('[AssistantPage] onValidate clicked')}
+            onEdit={() => console.log('[AssistantPage] onEdit clicked')}
+          />
+        )
       case 'suggesting':
         return <SuggestionsStep />
       case 'validating':
@@ -291,7 +322,7 @@ function AssistantPageContent() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <Button 
@@ -314,7 +345,7 @@ function AssistantPageContent() {
       </div>
 
       {/* Main Content */}
-      <div className="container mx-auto px-4 py-6 max-w-2xl">
+      <div className="container mx-auto px-4 pt-6 pb-36 max-w-2xl">
         {renderCurrentStep()}
       </div>
     </div>
@@ -327,4 +358,4 @@ export default function AssistantPage() {
       <AssistantPageContent />
     </AssistantRouteGuard>
   )
-}
+} 

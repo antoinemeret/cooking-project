@@ -28,7 +28,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       </main>
       
       {/* Bottom navigation for mobile */}
-      <div className="lg:hidden">
+      <div className="lg:hidden pointer-events-auto">
         <BottomNavigation />
       </div>
     </div>

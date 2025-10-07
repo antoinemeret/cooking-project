@@ -64,39 +64,14 @@ export function InterpretationSummary({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24">
       {/* Header */}
       <div className="text-center">
         <h2 className="text-2xl font-semibold mb-2">Consignes</h2>
         <p className="text-muted-foreground">Voilà ce que j'ai compris :</p>
       </div>
 
-      {/* Interpretation Text */}
-      <Card>
-        <CardContent className="pt-6">
-          <div 
-            className="text-lg leading-relaxed"
-            dangerouslySetInnerHTML={{ 
-              __html: highlightExtractedValues(text, extractedValues || {}) 
-            }}
-          />
-          
-          {/* Confidence indicator */}
-          <div className="flex items-center justify-between mt-4 pt-4 border-t">
-            <div className="flex items-center space-x-2">
-              {getConfidenceIcon(confidence)}
-              <span className={`text-sm font-medium ${getConfidenceColor(confidence)}`}>
-                Confiance: {Math.round(confidence * 100)}%
-              </span>
-            </div>
-            {language && (
-              <Badge variant="outline" className="text-xs">
-                {language.toUpperCase()}
-              </Badge>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      {/* Interpretation Text card removed per request */}
 
       {/* Extracted Values Summary */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -111,7 +86,7 @@ export function InterpretationSummary({
           <CardContent className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Nombre de repas</span>
-              <Badge variant="secondary">{constraints.general.mealCount}</Badge>
+              <Badge variant="secondary" className="text-xs">{constraints.general.mealCount}</Badge>
             </div>
             {constraints.general.seasonal && (
               <div className="flex items-center justify-between">
@@ -136,11 +111,11 @@ export function InterpretationSummary({
             </CardHeader>
             <CardContent className="space-y-2">
               {meal.includeIngredients && meal.includeIngredients.length > 0 && (
-                <div>
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-muted-foreground">Ingrédients à inclure</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <div className="flex flex-wrap gap-1">
                     {meal.includeIngredients.map((ingredient, i) => (
-                      <Badge key={i} variant="outline" className="text-green-600">
+                      <Badge key={i} variant="outline" className="text-xs text-muted-foreground">
                         {ingredient}
                       </Badge>
                     ))}
@@ -149,11 +124,11 @@ export function InterpretationSummary({
               )}
               
               {meal.excludeIngredients && meal.excludeIngredients.length > 0 && (
-                <div>
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-muted-foreground">Ingrédients à exclure</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <div className="flex flex-wrap gap-1">
                     {meal.excludeIngredients.map((ingredient, i) => (
-                      <Badge key={i} variant="outline" className="text-red-600">
+                      <Badge key={i} variant="outline" className="text-xs text-muted-foreground">
                         {ingredient}
                       </Badge>
                     ))}
@@ -162,11 +137,11 @@ export function InterpretationSummary({
               )}
               
               {meal.dietaryRestrictions && meal.dietaryRestrictions.length > 0 && (
-                <div>
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-muted-foreground">Restrictions alimentaires</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <div className="flex flex-wrap gap-1">
                     {meal.dietaryRestrictions.map((restriction, i) => (
-                      <Badge key={i} variant="outline" className="text-orange-600">
+                      <Badge key={i} variant="outline" className="text-xs text-muted-foreground">
                         {restriction}
                       </Badge>
                     ))}
@@ -174,12 +149,25 @@ export function InterpretationSummary({
                 </div>
               )}
               
+              {meal.cookingMethod && meal.cookingMethod.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-muted-foreground">Mode de cuisson</span>
+                  <div className="flex flex-wrap gap-1">
+                    {meal.cookingMethod.map((method, i) => (
+                      <Badge key={i} variant="outline" className="text-xs text-muted-foreground">
+                        {method}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {meal.cuisineStyle && meal.cuisineStyle.length > 0 && (
-                <div>
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-muted-foreground">Style de cuisine</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
+                  <div className="flex flex-wrap gap-1">
                     {meal.cuisineStyle.map((cuisine, i) => (
-                      <Badge key={i} variant="outline" className="text-purple-600">
+                      <Badge key={i} variant="outline" className="text-xs text-muted-foreground">
                         {cuisine}
                       </Badge>
                     ))}

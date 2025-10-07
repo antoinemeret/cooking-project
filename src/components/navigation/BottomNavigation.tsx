@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ImportRecipeDialog } from '@/components/recipes/ImportRecipeDialog'
+import { BookOpen, Plus, Calendar, ShoppingCart } from 'lucide-react'
 
 // Icons from Figma
 const imgRecipes = "http://localhost:3845/assets/b00b13a749c72fead8836083925fc6961fa66ea5.svg"
@@ -20,7 +21,7 @@ const imgGrocery = "http://localhost:3845/assets/49c3e0f7fae9b7faf1ddd28c3c53b7d
 interface NavItem {
   href?: string
   label: string
-  icon: string
+  icon: React.ReactNode
   isActive?: boolean
   isDrawer?: boolean
 }
@@ -54,30 +55,30 @@ export function BottomNavigation() {
     {
       href: '/recipes',
       label: 'Recipes',
-      icon: imgRecipes,
+      icon: <BookOpen className="w-5 h-5" />,
       isActive: pathname.startsWith('/recipes')
     },
     {
       label: 'Add Recipe',
-      icon: imgAddRecipe,
+      icon: <Plus className="w-5 h-5" />,
       isDrawer: true
     },
     {
       href: '/planner',
       label: 'Planner',
-      icon: imgPlanner,
+      icon: <Calendar className="w-5 h-5" />,
       isActive: pathname.startsWith('/planner')
     },
     {
       href: '/groceries',
       label: 'Groceries',
-      icon: imgGrocery,
+      icon: <ShoppingCart className="w-5 h-5" />,
       isActive: pathname.startsWith('/groceries')
     }
   ]
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[lightgrey] z-50">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-[lightgrey] shadow-[0_-2px_8px_rgba(0,0,0,0.06)] z-[999]">
       <div className="flex items-center justify-between px-10 py-0 h-16">
         {navItems.map((item) => {
           if (item.isDrawer) {
@@ -95,11 +96,7 @@ export function BottomNavigation() {
                     "opacity-60"
                   )}
                 >
-                  <img 
-                    alt={item.label} 
-                    className="block max-w-none size-full" 
-                    src={item.icon} 
-                  />
+                  {item.icon}
                 </button>
               </AddRecipeDrawer>
             )
@@ -117,11 +114,7 @@ export function BottomNavigation() {
                   : "opacity-60"
               )}
             >
-              <img 
-                alt={item.label} 
-                className="block max-w-none size-full" 
-                src={item.icon} 
-              />
+              {item.icon}
             </Link>
           )
         })}

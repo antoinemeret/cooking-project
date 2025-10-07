@@ -216,6 +216,7 @@ export interface AssistantStore {
   
   // Constraints
   constraints: Constraints | null
+  interpretation: ConstraintParseResponse | null
   
   // Current meal being suggested
   currentMealIndex: number
@@ -243,6 +244,7 @@ export interface AssistantActions {
   
   // Constraints
   setConstraints: (constraints: Constraints) => void
+  setInterpretation: (interpretation: ConstraintParseResponse) => void
   updateGeneralConstraints: (constraints: Partial<GeneralConstraints>) => void
   updatePerMealConstraints: (mealIndex: number, constraints: Partial<PerMealConstraints>) => void
   addPerMealConstraints: (constraints: PerMealConstraints) => void
