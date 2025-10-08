@@ -9,6 +9,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
+  DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
   DropdownMenuLabel
@@ -208,8 +209,6 @@ export function ConstraintCard({
         ? selectedValues.filter(v => v !== option)
         : [...selectedValues, option]
       onChange(newValues)
-      // Close dropdown after selection with a small delay to ensure state update
-      setTimeout(() => setIsOpen(false), 0)
     }
 
     return (
@@ -256,22 +255,31 @@ export function ConstraintCard({
         </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56 max-h-72 overflow-y-auto">
-            {options.map((option) => (
-              <DropdownMenuCheckboxItem
-                key={option}
-                checked={selectedValues.includes(option)}
-                onSelect={(e) => {
-                  e.preventDefault()
-                  handleToggle(option)
-                }}
-                onClick={() => {
-                  // Force close the dropdown
-                  setTimeout(() => setIsOpen(false), 10)
-                }}
-              >
-                {labelMap[option] || option}
-              </DropdownMenuCheckboxItem>
-            ))}
+            {options.map((option) => {
+              const isSelected = selectedValues.includes(option)
+              return (
+                <DropdownMenuItem
+                  key={option}
+                  onSelect={() => {
+                    handleToggle(option)
+                    setIsOpen(false) // Close immediately
+                  }}
+                  className="flex items-center justify-between"
+                >
+                  <span>{labelMap[option] || option}</span>
+                  <div className={cn(
+                    "w-4 h-4 border rounded flex items-center justify-center",
+                    isSelected ? "bg-primary border-primary" : "border-muted-foreground"
+                  )}>
+                    {isSelected && (
+                      <svg className="w-3 h-3 text-primary-foreground" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </div>
+                </DropdownMenuItem>
+              )
+            })}
           </DropdownMenuContent>
         </DropdownMenu>
 
