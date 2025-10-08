@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
@@ -45,7 +45,25 @@ export function ConstraintSection({
   onRemoveMeal
 }: ConstraintSectionProps) {
   const [openDropdowns, setOpenDropdowns] = useState<{ [key: number]: boolean }>({})
+  const [availableIngredients, setAvailableIngredients] = useState<string[]>([])
   const { general, perMeal } = constraints
+
+  // Fetch available ingredients from the database
+  useEffect(() => {
+    const fetchIngredients = async () => {
+      try {
+        const response = await fetch('/api/ingredients')
+        if (response.ok) {
+          const data = await response.json()
+          setAvailableIngredients(data.ingredients || [])
+        }
+      } catch (error) {
+        console.error('Failed to fetch ingredients:', error)
+      }
+    }
+
+    fetchIngredients()
+  }, [])
 
   const handleMealCountChange = (delta: number) => {
     const newCount = Math.max(1, Math.min(7, general.mealCount + delta))
@@ -170,6 +188,7 @@ export function ConstraintSection({
                     onChange={(value) => handleConstraintChange(index, constraintType as keyof PerMealConstraints, value)}
                     onRemove={() => handleRemoveConstraint(index, constraintType as keyof PerMealConstraints)}
                     showRemove
+                    availableIngredients={availableIngredients}
                   />
                 ))}
 

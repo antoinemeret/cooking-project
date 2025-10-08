@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { TagInput } from '@/components/ui/tag-input'
+import { MultiSelectCombobox } from '@/components/ui/multi-select-combobox'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -125,6 +126,7 @@ interface ConstraintCardProps {
   onRemove?: () => void
   showRemove?: boolean
   className?: string
+  availableIngredients?: string[]
 }
 
 export function ConstraintCard({
@@ -133,13 +135,14 @@ export function ConstraintCard({
   onChange,
   onRemove,
   showRemove = false,
-  className
+  className,
+  availableIngredients = []
 }: ConstraintCardProps) {
   const label = CONSTRAINT_LABELS[type]
 
-  // Ingredient inputs (TagInput)
+  // Ingredient inputs (MultiSelectCombobox)
   if (type === 'includeIngredients' || type === 'excludeIngredients') {
-    const tags = Array.isArray(value) ? value : []
+    const selectedIngredients = Array.isArray(value) ? value : []
     
     return (
       <div className={cn('space-y-2', className)}>
@@ -156,12 +159,13 @@ export function ConstraintCard({
             </Button>
           )}
         </div>
-        <TagInput
-          tags={tags}
-          onTagsChange={onChange}
-          placeholder={type === 'includeIngredients' ? 'Ajouter un ingrédient...' : 'Exclure un ingrédient...'}
-          allowCreate
-          maxTags={20}
+        <MultiSelectCombobox
+          options={availableIngredients}
+          selectedValues={selectedIngredients}
+          onSelectionChange={onChange}
+          placeholder={type === 'includeIngredients' ? 'Ajouter des ingrédients...' : 'Exclure des ingrédients...'}
+          searchPlaceholder="Rechercher un ingrédient..."
+          emptyMessage="Aucun ingrédient trouvé."
         />
       </div>
     )
