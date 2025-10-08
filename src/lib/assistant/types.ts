@@ -109,7 +109,7 @@ export const MealContextSchema = z.enum([
 // General constraints (apply to all meals)
 export const GeneralConstraintsSchema = z.object({
   mealCount: z.number().int().min(1).max(7).default(1),
-  seasonal: z.boolean().optional()
+  seasonal: z.boolean().default(true)
 })
 
 // Per-meal constraints

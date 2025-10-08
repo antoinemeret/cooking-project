@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { Users, Utensils, Plus, Minus } from 'lucide-react'
 import { Constraints, GeneralConstraints, PerMealConstraints, ConstraintType } from '@/lib/assistant/types'
 import { ConstraintCard } from './ConstraintCard'
@@ -123,14 +124,11 @@ export function ConstraintSection({
 
           {/* Seasonal Toggle */}
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">Produits de saison</span>
-            <Button
-              variant={general.seasonal ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onUpdateGeneral({ seasonal: !general.seasonal })}
-            >
-              {general.seasonal ? 'Oui' : 'Non'}
-            </Button>
+            <span className="text-sm font-medium">De saison seulement</span>
+            <Switch
+              checked={general.seasonal ?? true}
+              onCheckedChange={(checked) => onUpdateGeneral({ seasonal: checked })}
+            />
           </div>
         </CardContent>
       </Card>

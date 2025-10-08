@@ -92,9 +92,9 @@ export function InterpretationSummary({
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground flex items-center space-x-1">
                   <Leaf className="w-4 h-4" />
-                  <span>Saisonnier</span>
+                  <span>De saison seulement</span>
                 </span>
-                <Badge variant="outline" className="text-green-600">Oui</Badge>
+                <Badge variant="outline" className="text-green-600">Activé</Badge>
               </div>
             )}
           </CardContent>
