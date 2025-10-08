@@ -245,7 +245,7 @@ export const useAssistantStore = create<AssistantStoreType>()(
     }),
     {
       name: 'assistant-store',
-      partialize: (state) => ({
+      partialize: (state: AssistantStoreType) => ({
         // Only persist essential state, not UI state
         constraints: state.constraints,
         selectedRecipes: state.selectedRecipes,

@@ -57,7 +57,7 @@
   - [x] 3.5 Mixed FR/EN behavior: show mixed when confidence high, else preferred UI language
   - [x] 3.6 Tests: schema validation, parsing fallback paths
 
-- [ ] 4.0 Implement constraint editing (general and per-meal) with persistence
+- [x] 4.0 Implement constraint editing (general and per-meal) with persistence
   - [x] 4.1 Build `ConstraintSection` (general, Plat 1..N) with separators
   - [x] 4.2 Build `ConstraintCard` supporting add/edit/delete for each constraint type
   - [x] 4.3 Controls: chip inputs (ingredients), selects (dish type, dietary, cuisine), stepper (meal count)
