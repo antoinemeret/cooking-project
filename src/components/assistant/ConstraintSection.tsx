@@ -214,7 +214,7 @@ export function ConstraintSection({
                               option.type === 'dishType' || option.type === 'dietaryRestrictions' || 
                               option.type === 'cuisineStyle' || option.type === 'cookingMethod' || 
                               option.type === 'mealContext' ? [] :
-                              option.type === 'maxPrepTime' || option.type === 'maxCookTime' ? 0 :
+                              option.type === 'maxPrepTime' || option.type === 'maxCookTime' ? 30 :
                               option.type === 'servings' ? 2 :
                               []
                             handleConstraintChange(index, option.type as keyof PerMealConstraints, defaultValue)

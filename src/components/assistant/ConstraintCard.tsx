@@ -297,20 +297,44 @@ export function ConstraintCard({
           )}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const currentValue = numValue || 30
+              const newValue = Math.max(15, currentValue - 15)
+              onChange(newValue)
+            }}
+            className="h-8 w-8 p-0"
+          >
+            <Minus className="w-4 h-4" />
+          </Button>
           <Input
             type="number"
-            min={0}
+            min={15}
             max={480}
-            step={5}
-            value={numValue || ''}
+            step={15}
+            value={numValue || 30}
             onChange={(e) => {
               const val = parseInt(e.target.value)
-              // Use 0 for empty values to keep constraint visible
-              onChange(isNaN(val) ? 0 : val)
+              // Use 30 for empty values to keep constraint visible with reasonable default
+              onChange(isNaN(val) ? 30 : val)
             }}
-            placeholder="0"
-            className="text-sm"
+            placeholder="30"
+            className="text-sm w-20 text-center"
           />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const currentValue = numValue || 30
+              const newValue = Math.min(480, currentValue + 15)
+              onChange(newValue)
+            }}
+            className="h-8 w-8 p-0"
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
           <span className="text-sm text-muted-foreground">min</span>
         </div>
       </div>
