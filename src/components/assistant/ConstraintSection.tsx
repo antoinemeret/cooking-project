@@ -70,10 +70,10 @@ export function ConstraintSection({
     if (meal.dishType && meal.dishType.length > 0) active.push('dishType')
     if (meal.dietaryRestrictions && meal.dietaryRestrictions.length > 0) active.push('dietaryRestrictions')
     if (meal.cuisineStyle && meal.cuisineStyle.length > 0) active.push('cuisineStyle')
-    if (meal.maxPrepTime !== undefined) active.push('maxPrepTime')
-    if (meal.maxCookTime !== undefined) active.push('maxCookTime')
+    if (meal.maxPrepTime !== undefined && meal.maxPrepTime > 0) active.push('maxPrepTime')
+    if (meal.maxCookTime !== undefined && meal.maxCookTime > 0) active.push('maxCookTime')
     if (meal.cookingMethod && meal.cookingMethod.length > 0) active.push('cookingMethod')
-    if (meal.servings !== undefined) active.push('servings')
+    if (meal.servings !== undefined && meal.servings > 0) active.push('servings')
     if (meal.mealContext && meal.mealContext.length > 0) active.push('mealContext')
     return active
   }
@@ -189,7 +189,8 @@ export function ConstraintSection({
                       {getAvailableConstraints(meal).map((option) => (
                         <DropdownMenuItem
                           key={option.type}
-                          onClick={() => {
+                          onSelect={(e) => {
+                            e.preventDefault()
                             // Initialize with appropriate default value
                             const defaultValue = 
                               option.type === 'includeIngredients' || option.type === 'excludeIngredients' ? [] :
