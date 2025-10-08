@@ -62,19 +62,19 @@ export function ConstraintSection({
     onUpdatePerMeal(mealIndex, { [field]: undefined })
   }
 
-  // Get active constraints for a meal
+  // Get active constraints for a meal (consider a constraint active if it exists, even if empty)
   const getActiveConstraints = (meal: PerMealConstraints): ConstraintType[] => {
     const active: ConstraintType[] = []
-    if (meal.includeIngredients && meal.includeIngredients.length > 0) active.push('includeIngredients')
-    if (meal.excludeIngredients && meal.excludeIngredients.length > 0) active.push('excludeIngredients')
-    if (meal.dishType && meal.dishType.length > 0) active.push('dishType')
-    if (meal.dietaryRestrictions && meal.dietaryRestrictions.length > 0) active.push('dietaryRestrictions')
-    if (meal.cuisineStyle && meal.cuisineStyle.length > 0) active.push('cuisineStyle')
-    if (meal.maxPrepTime !== undefined && meal.maxPrepTime > 0) active.push('maxPrepTime')
-    if (meal.maxCookTime !== undefined && meal.maxCookTime > 0) active.push('maxCookTime')
-    if (meal.cookingMethod && meal.cookingMethod.length > 0) active.push('cookingMethod')
-    if (meal.servings !== undefined && meal.servings > 0) active.push('servings')
-    if (meal.mealContext && meal.mealContext.length > 0) active.push('mealContext')
+    if (meal.includeIngredients !== undefined) active.push('includeIngredients')
+    if (meal.excludeIngredients !== undefined) active.push('excludeIngredients')
+    if (meal.dishType !== undefined) active.push('dishType')
+    if (meal.dietaryRestrictions !== undefined) active.push('dietaryRestrictions')
+    if (meal.cuisineStyle !== undefined) active.push('cuisineStyle')
+    if (meal.maxPrepTime !== undefined) active.push('maxPrepTime')
+    if (meal.maxCookTime !== undefined) active.push('maxCookTime')
+    if (meal.cookingMethod !== undefined) active.push('cookingMethod')
+    if (meal.servings !== undefined) active.push('servings')
+    if (meal.mealContext !== undefined) active.push('mealContext')
     return active
   }
 
@@ -193,12 +193,12 @@ export function ConstraintSection({
                             e.preventDefault()
                             // Initialize with appropriate default value
                             const defaultValue = 
-                              option.type === 'includeIngredients' || option.type === 'excludeIngredients' ? [''] :
+                              option.type === 'includeIngredients' || option.type === 'excludeIngredients' ? [] :
                               option.type === 'dishType' || option.type === 'dietaryRestrictions' || 
                               option.type === 'cuisineStyle' || option.type === 'cookingMethod' || 
-                              option.type === 'mealContext' ? [''] :
-                              option.type === 'maxPrepTime' || option.type === 'maxCookTime' ? 30 :
-                              option.type === 'servings' ? 2 :
+                              option.type === 'mealContext' ? [] :
+                              option.type === 'maxPrepTime' || option.type === 'maxCookTime' ? 0 :
+                              option.type === 'servings' ? 0 :
                               []
                             handleConstraintChange(index, option.type as keyof PerMealConstraints, defaultValue)
                           }}

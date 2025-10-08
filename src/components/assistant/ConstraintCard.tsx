@@ -206,7 +206,7 @@ export function ConstraintCard({
       const newValues = selectedValues.includes(option)
         ? selectedValues.filter(v => v !== option)
         : [...selectedValues, option]
-      onChange(newValues.length > 0 ? newValues : undefined)
+      onChange(newValues)
     }
 
     return (
@@ -232,11 +232,11 @@ export function ConstraintCard({
               className="w-full justify-between"
               size="sm"
             >
-              <span className="truncate">
-                {selectedValues.length > 0
-                  ? `${selectedValues.length} sélectionné${selectedValues.length > 1 ? 's' : ''}`
-                  : 'Sélectionner...'}
-              </span>
+            <span className="truncate">
+              {selectedValues.filter(val => val.trim() !== '').length > 0
+                ? `${selectedValues.filter(val => val.trim() !== '').length} sélectionné${selectedValues.filter(val => val.trim() !== '').length > 1 ? 's' : ''}`
+                : 'Aucune sélection'}
+            </span>
               <ChevronDown className="w-4 h-4 ml-2 opacity-50" />
             </Button>
           </DropdownMenuTrigger>
@@ -254,9 +254,9 @@ export function ConstraintCard({
         </DropdownMenu>
 
         {/* Display selected values as badges */}
-        {selectedValues.length > 0 && (
+        {selectedValues.filter(val => val.trim() !== '').length > 0 && (
           <div className="flex flex-wrap gap-1">
-            {selectedValues.map((val) => (
+            {selectedValues.filter(val => val.trim() !== '').map((val) => (
               <Badge
                 key={val}
                 variant="secondary"
@@ -302,7 +302,8 @@ export function ConstraintCard({
             value={numValue || ''}
             onChange={(e) => {
               const val = parseInt(e.target.value)
-              onChange(isNaN(val) ? undefined : val)
+              // Use 0 for empty values to keep constraint visible
+              onChange(isNaN(val) ? 0 : val)
             }}
             placeholder="0"
             className="text-sm"
@@ -342,7 +343,8 @@ export function ConstraintCard({
             value={numValue || ''}
             onChange={(e) => {
               const val = parseInt(e.target.value)
-              onChange(isNaN(val) ? undefined : val)
+              // Use 0 for empty values to keep constraint visible
+              onChange(isNaN(val) ? 0 : val)
             }}
             placeholder="1"
             className="text-sm"
