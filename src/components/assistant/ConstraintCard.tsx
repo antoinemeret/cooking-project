@@ -260,7 +260,10 @@ export function ConstraintCard({
               <DropdownMenuCheckboxItem
                 key={option}
                 checked={selectedValues.includes(option)}
-                onCheckedChange={() => handleToggle(option)}
+                onSelect={(e) => {
+                  e.preventDefault()
+                  handleToggle(option)
+                }}
               >
                 {labelMap[option] || option}
               </DropdownMenuCheckboxItem>
