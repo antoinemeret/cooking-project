@@ -13,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel
 } from '@/components/ui/dropdown-menu'
-import { ChevronDown, X, Clock, Users } from 'lucide-react'
+import { ChevronDown, X, Clock, Users, Plus, Minus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   ConstraintType,
@@ -336,19 +336,43 @@ export function ConstraintCard({
           )}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const currentValue = numValue || 2
+              const newValue = Math.max(1, currentValue - 1)
+              onChange(newValue)
+            }}
+            className="h-8 w-8 p-0"
+          >
+            <Minus className="w-4 h-4" />
+          </Button>
           <Input
             type="number"
             min={1}
             max={20}
-            value={numValue || ''}
+            value={numValue || 2}
             onChange={(e) => {
               const val = parseInt(e.target.value)
-              // Use 0 for empty values to keep constraint visible
-              onChange(isNaN(val) ? 0 : val)
+              // Use 2 for empty values to keep constraint visible with reasonable default
+              onChange(isNaN(val) ? 2 : val)
             }}
-            placeholder="1"
-            className="text-sm"
+            placeholder="2"
+            className="text-sm w-16 text-center"
           />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const currentValue = numValue || 2
+              const newValue = Math.min(20, currentValue + 1)
+              onChange(newValue)
+            }}
+            className="h-8 w-8 p-0"
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
           <span className="text-sm text-muted-foreground">pers.</span>
         </div>
       </div>
