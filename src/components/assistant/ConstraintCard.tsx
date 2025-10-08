@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -135,34 +135,7 @@ export function ConstraintCard({
   showRemove = false,
   className
 }: ConstraintCardProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
   const label = CONSTRAINT_LABELS[type]
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        console.log('🌍 Click outside detected, closing dropdown')
-        setIsOpen(false)
-      }
-    }
-
-    if (isOpen) {
-      console.log('📝 Adding click outside listener')
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-
-    return () => {
-      console.log('🧹 Removing click outside listener')
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [isOpen])
-
-  // Debug isOpen state changes
-  useEffect(() => {
-    console.log('🔄 isOpen state changed to:', isOpen)
-  }, [isOpen])
 
   // Ingredient inputs (TagInput)
   if (type === 'includeIngredients' || type === 'excludeIngredients') {
@@ -253,63 +226,45 @@ export function ConstraintCard({
           )}
         </div>
         
-        <div className="relative" ref={dropdownRef}>
-          <Button
-            variant="outline"
-            className="w-full justify-between h-auto min-h-9 p-2"
-            size="sm"
-            onClick={() => setIsOpen(!isOpen)}
-          >
-            <div className="flex flex-wrap gap-1 flex-1">
-              {selectedValues.filter(val => val.trim() !== '').length > 0 ? (
-                selectedValues
-                  .filter(val => val.trim() !== '')
-                  .map((value, index) => (
-                    <Badge
-                      key={index}
-                      variant="secondary"
-                      className="text-xs px-2 py-0.5 h-6"
-                    >
-                      {labelMap[value] || value}
-                    </Badge>
-                  ))
-              ) : (
-                <span className="text-muted-foreground text-sm">Aucune sélection</span>
-              )}
-            </div>
-            <ChevronDown className={cn("w-4 h-4 ml-2 opacity-50 flex-shrink-0 transition-transform", isOpen && "rotate-180")} />
-          </Button>
-          
-          {isOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-background border border-border rounded-md shadow-lg z-50 max-h-72 overflow-y-auto">
-              {options.map((option) => {
-                const isSelected = selectedValues.includes(option)
-                return (
-                  <div
-                    key={option}
-                    className="flex items-center justify-between px-3 py-2 hover:bg-accent cursor-pointer"
-                    onClick={() => {
-                      handleToggle(option)
-                      setIsOpen(false) // Close immediately
-                    }}
-                  >
-                    <span className="text-sm">{labelMap[option] || option}</span>
-                    <div className={cn(
-                      "w-4 h-4 border rounded flex items-center justify-center",
-                      isSelected ? "bg-primary border-primary" : "border-muted-foreground"
-                    )}>
-                      {isSelected && (
-                        <svg className="w-3 h-3 text-primary-foreground" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="outline"
+              className="w-full justify-between h-auto min-h-9 p-2"
+              size="sm"
+            >
+              <div className="flex flex-wrap gap-1 flex-1">
+                {selectedValues.filter(val => val.trim() !== '').length > 0 ? (
+                  selectedValues
+                    .filter(val => val.trim() !== '')
+                    .map((value, index) => (
+                      <Badge
+                        key={index}
+                        variant="secondary"
+                        className="text-xs px-2 py-0.5 h-6"
+                      >
+                        {labelMap[value] || value}
+                      </Badge>
+                    ))
+                ) : (
+                  <span className="text-muted-foreground text-sm">Aucune sélection</span>
+                )}
+              </div>
+              <ChevronDown className="w-4 h-4 ml-2 opacity-50 flex-shrink-0" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-56 max-h-72 overflow-y-auto">
+            {options.map((option) => (
+              <DropdownMenuCheckboxItem
+                key={option}
+                checked={selectedValues.includes(option)}
+                onCheckedChange={() => handleToggle(option)}
+              >
+                {labelMap[option] || option}
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
       </div>
     )
