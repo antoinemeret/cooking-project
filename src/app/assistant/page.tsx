@@ -8,7 +8,8 @@ import { useEffect, useRef } from 'react'
 import { AssistantRouteGuard, useAssistantNavigation } from '@/components/assistant/AssistantRouteGuard'
 import { VoiceRecordButton } from '@/components/assistant/VoiceRecordButton'
 import { InterpretationSummary } from '@/components/assistant/InterpretationSummary'
-import { ConstraintParseResponse } from '@/lib/assistant/types'
+import { ConstraintSection } from '@/components/assistant/ConstraintSection'
+import { ConstraintParseResponse, PerMealConstraints } from '@/lib/assistant/types'
 
 // Placeholder components for each step (to be implemented in later tasks)
 function VoiceRecordingStep() {
@@ -87,15 +88,16 @@ function InterpretationStep() {
   }
 
   const handleValidate = () => {
-    // Move to editing step
-    // This will be implemented in the next task
-    console.log('Validating interpretation')
+    // Move to suggestions for the first meal
+    const store = useAssistantStore.getState()
+    store.setCurrentMealIndex(0)
+    store.setState('suggesting')
   }
 
   const handleEdit = () => {
     // Move to constraint editing step
-    // This will be implemented in the next task
-    console.log('Editing constraints')
+    const store = useAssistantStore.getState()
+    store.setState('editing')
   }
 
   if (!interpretation) {
@@ -117,47 +119,77 @@ function InterpretationStep() {
 }
 
 function ConstraintEditingStep() {
+  const { 
+    constraints, 
+    updateGeneralConstraints, 
+    updatePerMealConstraints, 
+    addPerMealConstraints,
+    removePerMealConstraints,
+    setState,
+    setCurrentMealIndex
+  } = useAssistantStore()
+
+  if (!constraints) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
+        <p className="text-muted-foreground">Aucune consigne disponible</p>
+      </div>
+    )
+  }
+
+  const handleAddMeal = () => {
+    const newMealIndex = constraints.perMeal.length
+    const newMeal: PerMealConstraints = { mealIndex: newMealIndex }
+    addPerMealConstraints(newMeal)
+  }
+
+  const handleContinue = () => {
+    // Move to suggestions for the first meal
+    setCurrentMealIndex(0)
+    setState('suggesting')
+  }
+
+  const handleBack = () => {
+    setState('interpreting')
+  }
+
   return (
     <div className="flex flex-col space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Consignes</h2>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="sm">
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <Button variant="ghost" size="sm">
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
+        <h2 className="text-2xl font-semibold">Modifier les consignes</h2>
+        <Button 
+          variant="ghost" 
+          size="sm"
+          onClick={handleBack}
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Retour
+        </Button>
       </div>
       
-      <div className="space-y-4">
-        <div className="border rounded-lg p-4">
-          <h3 className="font-medium mb-3">Consignes générales</h3>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm">Nombre de repas</span>
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm">-</Button>
-                <span className="w-8 text-center">2</span>
-                <Button variant="outline" size="sm">+</Button>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <div className="border rounded-lg p-4">
-          <h3 className="font-medium mb-3">Plat 1</h3>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm">Ingrédients à inclure</span>
-              <Button variant="outline" size="sm">+ Ajouter</Button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <ConstraintSection
+        constraints={constraints}
+        onUpdateGeneral={updateGeneralConstraints}
+        onUpdatePerMeal={updatePerMealConstraints}
+        onAddMeal={handleAddMeal}
+        onRemoveMeal={removePerMealConstraints}
+      />
       
-      <Button className="w-full">Continuer vers les suggestions</Button>
+      <div className="flex gap-3 pt-4">
+        <Button 
+          variant="outline" 
+          className="flex-1"
+          onClick={handleBack}
+        >
+          Retour
+        </Button>
+        <Button 
+          className="flex-1"
+          onClick={handleContinue}
+        >
+          Continuer vers les suggestions
+        </Button>
+      </div>
     </div>
   )
 }
@@ -299,13 +331,7 @@ function AssistantPageContent() {
           console.warn('[AssistantPage] editing state without interpretation, falling back to InterpretationStep')
           return <InterpretationStep />
         }
-        return (
-          <InterpretationSummary
-            interpretation={interpretation}
-            onValidate={() => console.log('[AssistantPage] onValidate clicked')}
-            onEdit={() => console.log('[AssistantPage] onEdit clicked')}
-          />
-        )
+        return <ConstraintEditingStep />
       case 'suggesting':
         return <SuggestionsStep />
       case 'validating':

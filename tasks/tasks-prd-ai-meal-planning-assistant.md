@@ -5,8 +5,9 @@
 - `src/lib/assistant/prompt.ts` - LLM prompt and JSON schema enforcement for parsing.
 - `src/lib/assistant/recommendations.ts` - Recipe matching, ranking, pagination helpers.
 - `src/components/assistant/VoiceRecordButton.tsx` - Voice recording UI with states.
-- `src/components/assistant/ConstraintCard.tsx` - Displays and edits a single constraint.
-- `src/components/assistant/ConstraintSection.tsx` - Groups constraints (general, per-meal).
+- `src/components/assistant/InterpretationSummary.tsx` - Displays parsed constraints summary.
+- `src/components/assistant/ConstraintCard.tsx` - Displays and edits a single constraint (ingredients, types, time, etc.).
+- `src/components/assistant/ConstraintSection.tsx` - Groups constraints (general, per-meal) with add/remove functionality.
 - `src/components/assistant/RecipeCard.tsx` - Recipe item with preview/select actions.
 - `src/components/assistant/RecipeSuggestionList.tsx` - Two-section suggestions with pagination.
 - `src/app/assistant/page.tsx` - Entry screen(s) and navigation between steps.
@@ -51,22 +52,23 @@
   - [x] 3.1 Define Zod schemas for v1 constraints (mealCount, include/exclude, dishType, dietary, cuisine)
   - [x] 3.2 Create `POST /api/constraints/parse` using Claude with strict JSON output
   - [x] 3.3 Validate LLM JSON with Zod; on failure, return partial interpretation
-  - [x] 3.4 Implement summary UI with highlighted extracted values and conflict flags
+  - [x] 3.4 Implement 
+  
   - [x] 3.5 Mixed FR/EN behavior: show mixed when confidence high, else preferred UI language
   - [x] 3.6 Tests: schema validation, parsing fallback paths
 
 - [ ] 4.0 Implement constraint editing (general and per-meal) with persistence
-  - [ ] 4.1 Build `ConstraintSection` (general, Plat 1..N) with separators
-  - [ ] 4.2 Build `ConstraintCard` supporting add/edit/delete for each constraint type
-  - [ ] 4.3 Controls: chip inputs (ingredients), selects (dish type, dietary, cuisine), stepper (meal count)
-  - [ ] 4.4 Persist edits to state; update suggestion steps when meal count changes
-  - [ ] 4.5 Tests: add/edit/remove constraints; per-meal overrides
+  - [x] 4.1 Build `ConstraintSection` (general, Plat 1..N) with separators
+  - [x] 4.2 Build `ConstraintCard` supporting add/edit/delete for each constraint type
+  - [x] 4.3 Controls: chip inputs (ingredients), selects (dish type, dietary, cuisine), stepper (meal count)
+  - [x] 4.4 Persist edits to state; update suggestion steps when meal count changes
+  - [x] 4.5 Tests: add/edit/remove constraints; per-meal overrides
 
 - [ ] 5.0 Implement recipe recommendations API and UI (two sections + pagination)
   - [ ] 5.1 Implement `POST /api/recipes/suggest` with SQL filters via Prisma
-  - [ ] 5.2 Ranking by match %, tie-break by most recently cooked
+  - [ ] 5.2 Ranking by match %, tie-break by less recently cooked
   - [ ] 5.3 Return two sections: perfectMatches then partialMatches; paginate 8 initial, +5
-  - [ ] 5.4 Build `RecipeSuggestionList` and `RecipeAssistantCard` with Eye and Calendar actions
+  - [ ] 5.4 Build `RecipeSuggestionList` and `RecipeAssistantCard` with Eye and Calendar actions using current selection in figma
   - [ ] 5.5 Handle empty/no-match state with guidance to relax constraints
   - [ ] 5.6 Tests: ranking, pagination, API behavior (mock DB)
 

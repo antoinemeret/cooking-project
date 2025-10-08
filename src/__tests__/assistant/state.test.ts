@@ -479,4 +479,448 @@ describe('Assistant Store', () => {
       expect(result.current.error).toBe('Test error')
     })
   })
+
+  describe('Constraint Editing - Add/Edit/Remove', () => {
+    describe('Adding Constraints', () => {
+      it('should add include ingredients to a meal', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0 }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            includeIngredients: ['tomates', 'basilic']
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].includeIngredients).toEqual(['tomates', 'basilic'])
+      })
+
+      it('should add exclude ingredients to a meal', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0 }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            excludeIngredients: ['gluten', 'lactose']
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].excludeIngredients).toEqual(['gluten', 'lactose'])
+      })
+
+      it('should add dish type to a meal', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0 }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            dishType: ['main', 'pasta']
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].dishType).toEqual(['main', 'pasta'])
+      })
+
+      it('should add dietary restrictions to a meal', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0 }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            dietaryRestrictions: ['vegetarian', 'gluten-free']
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].dietaryRestrictions).toEqual(['vegetarian', 'gluten-free'])
+      })
+
+      it('should add cuisine style to a meal', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0 }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            cuisineStyle: ['italian', 'french']
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].cuisineStyle).toEqual(['italian', 'french'])
+      })
+
+      it('should add time constraints to a meal', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0 }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            maxPrepTime: 30,
+            maxCookTime: 45
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].maxPrepTime).toBe(30)
+        expect(result.current.constraints?.perMeal[0].maxCookTime).toBe(45)
+      })
+
+      it('should add cooking method to a meal', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0 }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            cookingMethod: ['oven', 'stovetop']
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].cookingMethod).toEqual(['oven', 'stovetop'])
+      })
+
+      it('should add servings to a meal', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0 }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            servings: 4
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].servings).toBe(4)
+      })
+
+      it('should add meal context to a meal', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0 }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            mealContext: ['quick-dinner', 'family-friendly']
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].mealContext).toEqual(['quick-dinner', 'family-friendly'])
+      })
+    })
+
+    describe('Editing Constraints', () => {
+      it('should edit existing include ingredients', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0, includeIngredients: ['tomates'] }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            includeIngredients: ['tomates', 'basilic', 'mozzarella']
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].includeIngredients).toEqual(['tomates', 'basilic', 'mozzarella'])
+      })
+
+      it('should edit dietary restrictions', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0, dietaryRestrictions: ['vegetarian'] }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            dietaryRestrictions: ['vegan']
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].dietaryRestrictions).toEqual(['vegan'])
+      })
+
+      it('should edit time constraints', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0, maxPrepTime: 30, maxCookTime: 30 }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            maxPrepTime: 15,
+            maxCookTime: 45
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].maxPrepTime).toBe(15)
+        expect(result.current.constraints?.perMeal[0].maxCookTime).toBe(45)
+      })
+
+      it('should preserve other constraints when editing one', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{
+            mealIndex: 0,
+            includeIngredients: ['tomates'],
+            dietaryRestrictions: ['vegetarian'],
+            maxPrepTime: 30
+          }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            cuisineStyle: ['italian']
+          })
+        })
+
+        const meal = result.current.constraints?.perMeal[0]
+        expect(meal?.includeIngredients).toEqual(['tomates'])
+        expect(meal?.dietaryRestrictions).toEqual(['vegetarian'])
+        expect(meal?.maxPrepTime).toBe(30)
+        expect(meal?.cuisineStyle).toEqual(['italian'])
+      })
+    })
+
+    describe('Removing Constraints', () => {
+      it('should remove a constraint by setting it to undefined', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{
+            mealIndex: 0,
+            includeIngredients: ['tomates'],
+            dietaryRestrictions: ['vegetarian']
+          }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            includeIngredients: undefined
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].includeIngredients).toBeUndefined()
+        expect(result.current.constraints?.perMeal[0].dietaryRestrictions).toEqual(['vegetarian'])
+      })
+
+      it('should remove multiple constraints', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{
+            mealIndex: 0,
+            includeIngredients: ['tomates'],
+            dietaryRestrictions: ['vegetarian'],
+            maxPrepTime: 30
+          }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            includeIngredients: undefined,
+            maxPrepTime: undefined
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].includeIngredients).toBeUndefined()
+        expect(result.current.constraints?.perMeal[0].maxPrepTime).toBeUndefined()
+        expect(result.current.constraints?.perMeal[0].dietaryRestrictions).toEqual(['vegetarian'])
+      })
+    })
+
+    describe('Per-Meal Overrides', () => {
+      it('should allow different constraints for different meals', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 3 },
+          perMeal: [
+            { mealIndex: 0 },
+            { mealIndex: 1 },
+            { mealIndex: 2 }
+          ]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          // Meal 0: Italian with tomatoes
+          result.current.updatePerMealConstraints(0, {
+            includeIngredients: ['tomates'],
+            cuisineStyle: ['italian']
+          })
+          // Meal 1: French, vegetarian
+          result.current.updatePerMealConstraints(1, {
+            cuisineStyle: ['french'],
+            dietaryRestrictions: ['vegetarian']
+          })
+          // Meal 2: Quick dinner
+          result.current.updatePerMealConstraints(2, {
+            mealContext: ['quick-dinner'],
+            maxPrepTime: 15
+          })
+        })
+
+        const meals = result.current.constraints?.perMeal
+        expect(meals?.[0].includeIngredients).toEqual(['tomates'])
+        expect(meals?.[0].cuisineStyle).toEqual(['italian'])
+        
+        expect(meals?.[1].cuisineStyle).toEqual(['french'])
+        expect(meals?.[1].dietaryRestrictions).toEqual(['vegetarian'])
+        
+        expect(meals?.[2].mealContext).toEqual(['quick-dinner'])
+        expect(meals?.[2].maxPrepTime).toBe(15)
+      })
+
+      it('should not affect other meals when updating one', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 2 },
+          perMeal: [
+            { mealIndex: 0, includeIngredients: ['tomates'] },
+            { mealIndex: 1, includeIngredients: ['carottes'] }
+          ]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updatePerMealConstraints(0, {
+            dietaryRestrictions: ['vegetarian']
+          })
+        })
+
+        expect(result.current.constraints?.perMeal[0].includeIngredients).toEqual(['tomates'])
+        expect(result.current.constraints?.perMeal[0].dietaryRestrictions).toEqual(['vegetarian'])
+        expect(result.current.constraints?.perMeal[1].includeIngredients).toEqual(['carottes'])
+        expect(result.current.constraints?.perMeal[1].dietaryRestrictions).toBeUndefined()
+      })
+    })
+
+    describe('Meal Count Changes', () => {
+      it('should add meals when meal count increases', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 1 },
+          perMeal: [{ mealIndex: 0 }]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updateGeneralConstraints({ mealCount: 3 })
+        })
+
+        expect(result.current.constraints?.perMeal).toHaveLength(3)
+        expect(result.current.constraints?.perMeal[1]).toEqual({ mealIndex: 1 })
+        expect(result.current.constraints?.perMeal[2]).toEqual({ mealIndex: 2 })
+      })
+
+      it('should remove meals when meal count decreases', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 3 },
+          perMeal: [
+            { mealIndex: 0, includeIngredients: ['tomates'] },
+            { mealIndex: 1, includeIngredients: ['carottes'] },
+            { mealIndex: 2, includeIngredients: ['poivrons'] }
+          ]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updateGeneralConstraints({ mealCount: 1 })
+        })
+
+        expect(result.current.constraints?.perMeal).toHaveLength(1)
+        expect(result.current.constraints?.perMeal[0].includeIngredients).toEqual(['tomates'])
+      })
+
+      it('should preserve existing meal constraints when increasing count', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 2 },
+          perMeal: [
+            { mealIndex: 0, includeIngredients: ['tomates'], dietaryRestrictions: ['vegetarian'] },
+            { mealIndex: 1, cuisineStyle: ['italian'] }
+          ]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updateGeneralConstraints({ mealCount: 4 })
+        })
+
+        expect(result.current.constraints?.perMeal).toHaveLength(4)
+        expect(result.current.constraints?.perMeal[0]).toEqual({
+          mealIndex: 0,
+          includeIngredients: ['tomates'],
+          dietaryRestrictions: ['vegetarian']
+        })
+        expect(result.current.constraints?.perMeal[1]).toEqual({
+          mealIndex: 1,
+          cuisineStyle: ['italian']
+        })
+        expect(result.current.constraints?.perMeal[2]).toEqual({ mealIndex: 2 })
+        expect(result.current.constraints?.perMeal[3]).toEqual({ mealIndex: 3 })
+      })
+
+      it('should not change perMeal array if meal count stays the same', () => {
+        const { result } = renderHook(() => useAssistantStore())
+        const initialConstraints: Constraints = {
+          general: { mealCount: 2, seasonal: false },
+          perMeal: [
+            { mealIndex: 0, includeIngredients: ['tomates'] },
+            { mealIndex: 1, includeIngredients: ['carottes'] }
+          ]
+        }
+        
+        act(() => {
+          result.current.setConstraints(initialConstraints)
+          result.current.updateGeneralConstraints({ seasonal: true })
+        })
+
+        expect(result.current.constraints?.perMeal).toHaveLength(2)
+        expect(result.current.constraints?.perMeal[0].includeIngredients).toEqual(['tomates'])
+        expect(result.current.constraints?.perMeal[1].includeIngredients).toEqual(['carottes'])
+        expect(result.current.constraints?.general.seasonal).toBe(true)
+      })
+    })
+  })
 })

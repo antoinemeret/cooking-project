@@ -96,13 +96,33 @@ export const useAssistantStore = create<AssistantStoreType>()(
         const { constraints } = get()
         if (!constraints) return
 
+        const updatedGeneral = {
+          ...constraints.general,
+          ...updates
+        }
+
+        // If meal count changed, sync perMeal array
+        let updatedPerMeal = [...constraints.perMeal]
+        if (updates.mealCount !== undefined && updates.mealCount !== constraints.general.mealCount) {
+          const newMealCount = updates.mealCount
+          const currentMealCount = constraints.perMeal.length
+
+          if (newMealCount > currentMealCount) {
+            // Add new meals
+            for (let i = currentMealCount; i < newMealCount; i++) {
+              updatedPerMeal.push({ mealIndex: i })
+            }
+          } else if (newMealCount < currentMealCount) {
+            // Remove excess meals
+            updatedPerMeal = updatedPerMeal.slice(0, newMealCount)
+          }
+        }
+
         set({
           constraints: {
             ...constraints,
-            general: {
-              ...constraints.general,
-              ...updates
-            }
+            general: updatedGeneral,
+            perMeal: updatedPerMeal
           }
         }, false, 'updateGeneralConstraints')
       },
