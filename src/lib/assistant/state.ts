@@ -76,17 +76,35 @@ export const useAssistantStore = create<AssistantStoreType>()(
 
       // Constraints and interpretation
       setConstraints: (constraints: Constraints) => {
+        // Ensure seasonal is always true by default
+        const constraintsWithDefaults = {
+          ...constraints,
+          general: {
+            ...constraints.general,
+            seasonal: constraints.general.seasonal ?? true
+          }
+        }
+        
         set({ 
-          constraints, 
+          constraints: constraintsWithDefaults, 
           currentState: 'editing',
           isLoading: false 
         }, false, 'setConstraints')
       },
       
       setInterpretation: (interpretation: ConstraintParseResponse) => {
+        // Ensure seasonal is always true by default
+        const constraintsWithDefaults = {
+          ...interpretation.constraints,
+          general: {
+            ...interpretation.constraints.general,
+            seasonal: interpretation.constraints.general.seasonal ?? true
+          }
+        }
+        
         set({ 
           interpretation,
-          constraints: interpretation.constraints,
+          constraints: constraintsWithDefaults,
           currentState: 'editing',
           isLoading: false 
         }, false, 'setInterpretation')
