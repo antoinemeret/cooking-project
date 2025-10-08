@@ -44,6 +44,7 @@ export function ConstraintSection({
   onAddMeal,
   onRemoveMeal
 }: ConstraintSectionProps) {
+  const [openDropdowns, setOpenDropdowns] = useState<{ [key: number]: boolean }>({})
   const { general, perMeal } = constraints
 
   const handleMealCountChange = (delta: number) => {
@@ -174,7 +175,7 @@ export function ConstraintSection({
 
                 {/* Add constraint button */}
                 {getAvailableConstraints(meal).length > 0 && (
-                  <DropdownMenu>
+                  <DropdownMenu open={openDropdowns[index]} onOpenChange={(open) => setOpenDropdowns(prev => ({ ...prev, [index]: open }))}>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="sm" className="w-full">
                         <Plus className="w-4 h-4 mr-2" />
@@ -187,8 +188,7 @@ export function ConstraintSection({
                       {getAvailableConstraints(meal).map((option) => (
                         <DropdownMenuItem
                           key={option.type}
-                          onSelect={(e) => {
-                            e.preventDefault()
+                          onSelect={() => {
                             // Initialize with appropriate default value
                             const defaultValue = 
                               option.type === 'includeIngredients' || option.type === 'excludeIngredients' ? [] :
@@ -199,6 +199,8 @@ export function ConstraintSection({
                               option.type === 'servings' ? 2 :
                               []
                             handleConstraintChange(index, option.type as keyof PerMealConstraints, defaultValue)
+                            // Close the dropdown after selection
+                            setOpenDropdowns(prev => ({ ...prev, [index]: false }))
                           }}
                         >
                           {option.label}

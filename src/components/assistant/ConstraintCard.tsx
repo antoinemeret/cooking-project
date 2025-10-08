@@ -143,17 +143,25 @@ export function ConstraintCard({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        console.log('🌍 Click outside detected, closing dropdown')
         setIsOpen(false)
       }
     }
 
     if (isOpen) {
+      console.log('📝 Adding click outside listener')
       document.addEventListener('mousedown', handleClickOutside)
     }
 
     return () => {
+      console.log('🧹 Removing click outside listener')
       document.removeEventListener('mousedown', handleClickOutside)
     }
+  }, [isOpen])
+
+  // Debug isOpen state changes
+  useEffect(() => {
+    console.log('🔄 isOpen state changed to:', isOpen)
   }, [isOpen])
 
   // Ingredient inputs (TagInput)
