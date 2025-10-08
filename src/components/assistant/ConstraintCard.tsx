@@ -134,6 +134,7 @@ export function ConstraintCard({
   showRemove = false,
   className
 }: ConstraintCardProps) {
+  const [isOpen, setIsOpen] = useState(false)
   const label = CONSTRAINT_LABELS[type]
 
   // Ingredient inputs (TagInput)
@@ -207,6 +208,8 @@ export function ConstraintCard({
         ? selectedValues.filter(v => v !== option)
         : [...selectedValues, option]
       onChange(newValues)
+      // Close dropdown after selection
+      setIsOpen(false)
     }
 
     return (
@@ -225,7 +228,7 @@ export function ConstraintCard({
           )}
         </div>
         
-        <DropdownMenu>
+        <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
           <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
