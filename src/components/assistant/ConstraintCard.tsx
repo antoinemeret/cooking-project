@@ -227,18 +227,30 @@ export function ConstraintCard({
         
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              className="w-full justify-between"
-              size="sm"
-            >
-            <span className="truncate">
-              {selectedValues.filter(val => val.trim() !== '').length > 0
-                ? `${selectedValues.filter(val => val.trim() !== '').length} sélectionné${selectedValues.filter(val => val.trim() !== '').length > 1 ? 's' : ''}`
-                : 'Aucune sélection'}
-            </span>
-              <ChevronDown className="w-4 h-4 ml-2 opacity-50" />
-            </Button>
+        <Button
+          variant="outline"
+          className="w-full justify-between h-auto min-h-9 p-2"
+          size="sm"
+        >
+          <div className="flex flex-wrap gap-1 flex-1">
+            {selectedValues.filter(val => val.trim() !== '').length > 0 ? (
+              selectedValues
+                .filter(val => val.trim() !== '')
+                .map((value, index) => (
+                  <Badge
+                    key={index}
+                    variant="secondary"
+                    className="text-xs px-2 py-0.5 h-6"
+                  >
+                    {labelMap[value] || value}
+                  </Badge>
+                ))
+            ) : (
+              <span className="text-muted-foreground text-sm">Aucune sélection</span>
+            )}
+          </div>
+          <ChevronDown className="w-4 h-4 ml-2 opacity-50 flex-shrink-0" />
+        </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-56 max-h-72 overflow-y-auto">
             {options.map((option) => (
@@ -253,20 +265,6 @@ export function ConstraintCard({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        {/* Display selected values as badges */}
-        {selectedValues.filter(val => val.trim() !== '').length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {selectedValues.filter(val => val.trim() !== '').map((val) => (
-              <Badge
-                key={val}
-                variant="secondary"
-                className="text-xs"
-              >
-                {labelMap[val] || val}
-              </Badge>
-            ))}
-          </div>
-        )}
       </div>
     )
   }
