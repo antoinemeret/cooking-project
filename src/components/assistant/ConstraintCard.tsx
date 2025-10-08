@@ -208,8 +208,8 @@ export function ConstraintCard({
         ? selectedValues.filter(v => v !== option)
         : [...selectedValues, option]
       onChange(newValues)
-      // Close dropdown after selection
-      setIsOpen(false)
+      // Close dropdown after selection with a small delay to ensure state update
+      setTimeout(() => setIsOpen(false), 0)
     }
 
     return (
@@ -263,6 +263,10 @@ export function ConstraintCard({
                 onSelect={(e) => {
                   e.preventDefault()
                   handleToggle(option)
+                }}
+                onClick={() => {
+                  // Force close the dropdown
+                  setTimeout(() => setIsOpen(false), 10)
                 }}
               >
                 {labelMap[option] || option}
