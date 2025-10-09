@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { Calendar, Eye } from 'lucide-react'
-import { TimeDisplay } from '@/components/recipes/TimeDisplay'
+import { Eye, CalendarPlus } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { TimeDisplay } from '@/components/recipes/TimeDisplay'
 import type { RecipeSuggestion } from '@/lib/assistant/types'
 
 interface RecipeAssistantCardProps {
@@ -12,15 +12,13 @@ interface RecipeAssistantCardProps {
   onPreview: (recipeId: string) => void
   onSelect: (recipeId: string) => void
   className?: string
-  showMatchPercentage?: boolean
 }
 
 export function RecipeAssistantCard ({
   recipe,
   onPreview,
   onSelect,
-  className,
-  showMatchPercentage = true
+  className
 }: RecipeAssistantCardProps) {
   const [imageError, setImageError] = useState(false)
 
@@ -37,155 +35,74 @@ export function RecipeAssistantCard ({
   return (
     <div
       className={cn(
-        'bg-white border border-border rounded-lg p-3 shadow-sm hover:shadow-md transition-all duration-200',
+        'box-border content-stretch flex flex-col gap-3 items-start justify-center p-[12px] relative rounded-[8px] border border-[#dadada] bg-white',
         className
       )}
     >
-      {/* Mobile Layout */}
-      <div className="flex flex-col gap-3 sm:hidden">
-        {/* Recipe Image with Match Badge */}
-        <div className="relative">
-          <button
-            onClick={handlePreview}
-            className="relative w-full h-[160px] rounded-lg overflow-hidden bg-muted"
-            aria-label={`Preview ${recipe.name}`}
-          >
-            {recipe.imageUrl && !imageError ? (
-              <Image
-                src={recipe.imageUrl}
-                alt={recipe.name}
-                fill
-                className="object-cover"
-                onError={() => setImageError(true)}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-muted">
-                <Image
-                  src="/placeholder-recipe.svg"
-                  alt="Recipe placeholder"
-                  width={48}
-                  height={48}
-                  className="opacity-50"
-                />
-              </div>
-            )}
-          </button>
-
-          {/* Match Percentage Badge */}
-          {showMatchPercentage && (
-            <div className="absolute top-2 right-2 bg-black/70 text-white text-xs font-semibold px-2 py-1 rounded">
-              {recipe.matchPercentage}% match
-            </div>
-          )}
-        </div>
-
-        {/* Recipe Content */}
-        <div className="flex flex-col gap-2">
-          <h3 className="font-bold text-[#212b36] text-base leading-6 line-clamp-2">
-            {recipe.name}
-          </h3>
-
-          {/* Footer with Time and Actions */}
-          <div className="flex items-center justify-between">
-            <TimeDisplay
-              preparationTime={recipe.prepTime}
-              cookingTime={recipe.cookTime}
+      
+      {/* Hero Picture */}
+      <div className="aspect-[329/219.333] bg-white overflow-clip relative rounded-[8px] shrink-0 w-full">
+        {recipe.imageUrl && !imageError ? (
+          <Image
+            src={recipe.imageUrl}
+            alt={recipe.name}
+            fill
+            className="object-cover"
+            onError={() => setImageError(true)}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-muted">
+            <Image
+              src="/placeholder-recipe.svg"
+              alt="Recipe placeholder"
+              width={48}
+              height={48}
+              className="opacity-50"
             />
-
-            {/* Action Buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handlePreview}
-                className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors border border-border"
-                title="Preview recipe"
-                aria-label="Preview recipe"
-              >
-                <Eye className="h-4 w-4" />
-              </button>
-
-              <button
-                onClick={handleSelect}
-                className="bg-neutral-700 h-8 w-8 rounded-full flex items-center justify-center hover:bg-neutral-800 transition-colors"
-                title="Select recipe"
-                aria-label="Select recipe for this meal"
-              >
-                <Calendar className="h-4 w-4 text-white" />
-              </button>
-            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Desktop Layout */}
-      <div className="hidden sm:flex gap-4 items-center">
-        {/* Recipe Image */}
-        <div className="flex-shrink-0 relative">
-          <button
-            onClick={handlePreview}
-            className="relative w-32 h-32 rounded-lg overflow-hidden bg-muted hover:opacity-90 transition-opacity"
-            aria-label={`Preview ${recipe.name}`}
-          >
-            {recipe.imageUrl && !imageError ? (
-              <Image
-                src={recipe.imageUrl}
-                alt={recipe.name}
-                fill
-                className="object-cover"
-                onError={() => setImageError(true)}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-muted">
-                <Image
-                  src="/placeholder-recipe.svg"
-                  alt="Recipe placeholder"
-                  width={40}
-                  height={40}
-                  className="opacity-50"
-                />
-              </div>
-            )}
-          </button>
+      {/* Meta data */}
+      <div className="content-stretch flex flex-col gap-2 items-start justify-start relative shrink-0 w-full">
+        {/* Title */}
+        <h3 className="font-['Public_Sans:Bold',_sans-serif] font-bold text-[#212b36] text-[18px] leading-[27px]">
+          {recipe.name}
+        </h3>
 
-          {/* Match Percentage Badge */}
-          {showMatchPercentage && (
-            <div className="absolute top-2 right-2 bg-black/70 text-white text-xs font-semibold px-2 py-1 rounded">
-              {recipe.matchPercentage}%
-            </div>
-          )}
+        {/* Description */}
+        <p className="font-['Public_Sans:Regular',_sans-serif] font-normal text-[#212b36] text-[12px] leading-[18px]">
+          Une délicieuse recette à découvrir.
+        </p>
+
+        {/* Footer with Duration tag */}
+        <div className="content-stretch flex gap-2 items-start justify-start relative shrink-0 w-full">
+          <TimeDisplay 
+            preparationTime={recipe.prepTime}
+            cookingTime={recipe.cookTime}
+          />
         </div>
 
-        {/* Recipe Content */}
-        <div className="flex-1 min-w-0 flex flex-col gap-2">
-          <h3 className="font-bold text-[#212b36] text-lg leading-6 line-clamp-1">
-            {recipe.name}
-          </h3>
-
-          <div className="flex gap-2">
-            <TimeDisplay
-              preparationTime={recipe.prepTime}
-              cookingTime={recipe.cookTime}
-            />
-          </div>
-        </div>
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Actions */}
+        <div className="box-border content-stretch flex gap-3 items-center justify-center px-0 py-3 relative shrink-0 w-full">
+          {/* Eye/Preview button */}
           <button
             onClick={handlePreview}
-            className="h-8 w-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors border border-border"
-            title="Preview recipe"
-            aria-label="Preview recipe"
+            className="relative shrink-0 size-6 hover:opacity-70 transition-opacity"
+            title="Aperçu de la recette"
+            aria-label="Aperçu de la recette"
           >
-            <Eye className="h-4 w-4" />
+            <Eye className="size-6 text-[#212b36]" />
           </button>
 
+          {/* Calendar/Select button */}
           <button
             onClick={handleSelect}
-            className="bg-neutral-700 h-8 w-8 rounded-full flex items-center justify-center hover:bg-neutral-800 transition-colors"
-            title="Select recipe"
-            aria-label="Select recipe for this meal"
+            className="bg-[#cff2d7] h-[25px] overflow-clip relative rounded-[18px] shrink-0 w-6 hover:bg-[#b8e6c3] transition-colors flex items-center justify-center"
+            title="Sélectionner cette recette"
+            aria-label="Sélectionner cette recette"
           >
-            <Calendar className="h-4 w-4 text-white" />
+            <CalendarPlus className="absolute left-1/2 size-4 top-1/2 translate-x-[-50%] translate-y-[-50%] text-[#212b36]" />
           </button>
         </div>
       </div>
