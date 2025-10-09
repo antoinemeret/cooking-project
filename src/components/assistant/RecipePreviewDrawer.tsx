@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/drawer'
 import { TimeDisplay } from '@/components/recipes/TimeDisplay'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import type { RecipeSuggestion } from '@/lib/assistant/types'
 
 interface Recipe {
   id: number
@@ -32,7 +33,7 @@ interface RecipePreviewDrawerProps {
   recipeId: string | null
   isOpen: boolean
   onClose: () => void
-  onSelect: (recipeId: string) => void
+  onSelect: (recipe: RecipeSuggestion) => void
 }
 
 export function RecipePreviewDrawer ({
@@ -80,14 +81,23 @@ export function RecipePreviewDrawer ({
   }, [recipeId, isOpen])
 
   const handleSelect = () => {
-    if (recipeId) {
-      onSelect(recipeId)
+    if (recipe) {
+      // Convert Recipe to RecipeSuggestion
+      const recipeSuggestion: RecipeSuggestion = {
+        id: recipe.id.toString(),
+        name: recipe.title,
+        imageUrl: recipe.image || undefined,
+        prepTime: recipe.preparationTime || undefined,
+        cookTime: recipe.cookingTime || undefined,
+        matchPercentage: 100 // Since it's selected from suggestions, assume 100% match
+      }
+      onSelect(recipeSuggestion)
       onClose()
     }
   }
 
   // Parse ingredients
-  let ingredients: any[] = []
+  let ingredients: string[] = []
   if (recipe?.rawIngredients) {
     try {
       ingredients = JSON.parse(recipe.rawIngredients)
@@ -108,7 +118,7 @@ export function RecipePreviewDrawer ({
 
   return (
     <Drawer open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DrawerContent className="max-h-[90vh]">
+      <DrawerContent className="!max-h-[95vh] !h-[95vh] !mt-0 [&[data-vaul-drawer-direction=bottom]]:!max-h-[95vh] [&[data-vaul-drawer-direction=bottom]]:!mt-0">
         <DrawerHeader className="text-left border-b">
           <div className="flex items-start justify-between">
             <div className="flex-1">
@@ -195,14 +205,10 @@ export function RecipePreviewDrawer ({
                 <div className="space-y-2">
                   <h3 className="font-semibold text-sm text-[#212b36]">Ingrédients</h3>
                   <ul className="space-y-1 text-sm">
-                    {ingredients.map((ingredient: any, index: number) => (
+                    {ingredients.map((ingredient: string, index: number) => (
                       <li key={index} className="flex gap-2">
                         <span className="text-muted-foreground">•</span>
-                        <span>
-                          {ingredient.quantity && `${ingredient.quantity} `}
-                          {ingredient.unit && `${ingredient.unit} `}
-                          {ingredient.name}
-                        </span>
+                        <span>{ingredient}</span>
                       </li>
                     ))}
                   </ul>
@@ -231,9 +237,6 @@ export function RecipePreviewDrawer ({
           >
             <Calendar className="h-4 w-4 mr-2" />
             Sélectionner cette recette
-          </Button>
-          <Button variant="outline" onClick={onClose}>
-            Annuler
           </Button>
         </DrawerFooter>
       </DrawerContent>
