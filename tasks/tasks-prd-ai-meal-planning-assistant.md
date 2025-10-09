@@ -8,12 +8,13 @@
 - `src/components/assistant/InterpretationSummary.tsx` - Displays parsed constraints summary.
 - `src/components/assistant/ConstraintCard.tsx` - Displays and edits a single constraint (ingredients, types, time, etc.).
 - `src/components/assistant/ConstraintSection.tsx` - Groups constraints (general, per-meal) with add/remove functionality.
-- `src/components/assistant/RecipeCard.tsx` - Recipe item with preview/select actions.
-- `src/components/assistant/RecipeSuggestionList.tsx` - Two-section suggestions with pagination.
+- `src/components/assistant/RecipeAssistantCard.tsx` - Recipe card for assistant with Eye (preview) and Calendar (select) actions.
+- `src/components/assistant/RecipeSuggestionList.tsx` - Two-section suggestions with pagination and empty state handling.
+- `src/components/assistant/RecipePreviewDrawer.tsx` - Bottom drawer for recipe preview with selection action.
 - `src/app/assistant/page.tsx` - Entry screen(s) and navigation between steps.
 - `src/app/api/voice/transcribe/route.ts` - Transcription endpoint (Whisper integration).
 - `src/app/api/constraints/parse/route.ts` - LLM constraint parsing endpoint.
-- `src/app/api/recipes/suggest/route.ts` - Suggestions endpoint with filters and ranking.
+- `src/app/api/recipes/suggest/route.ts` - Suggestions endpoint with filters, ranking, and pagination.
 - `src/lib/analytics.ts` - Track key events and metrics for the assistant.
 - `src/__tests__/assistant/state.test.ts` - Unit tests for state and reducers.
 - `src/__tests__/assistant/parsing.test.ts` - Unit tests for Zod schemas and parsing.
@@ -64,13 +65,13 @@
   - [x] 4.4 Persist edits to state; update suggestion steps when meal count changes
   - [x] 4.5 Tests: add/edit/remove constraints; per-meal overrides
 
-- [ ] 5.0 Implement recipe recommendations API and UI (two sections + pagination)
-  - [ ] 5.1 Implement `POST /api/recipes/suggest` with SQL filters via Prisma
-  - [ ] 5.2 Ranking by match %, tie-break by less recently cooked
-  - [ ] 5.3 Return two sections: perfectMatches then partialMatches; paginate 8 initial, +5
-  - [ ] 5.4 Build `RecipeSuggestionList` and `RecipeAssistantCard` with Eye and Calendar actions using current selection in figma
-  - [ ] 5.5 Handle empty/no-match state with guidance to relax constraints
-  - [ ] 5.6 Tests: ranking, pagination, API behavior (mock DB)
+- [x] 5.0 Implement recipe recommendations API and UI (two sections + pagination)
+  - [x] 5.1 Implement `POST /api/recipes/suggest` with SQL filters via Prisma
+  - [x] 5.2 Ranking by match %, tie-break by less recently cooked
+  - [x] 5.3 Return two sections: perfectMatches then partialMatches; paginate 8 initial, +5
+  - [x] 5.4 Build `RecipeSuggestionList` and `RecipeAssistantCard` with Eye and Calendar actions
+  - [x] 5.5 Handle empty/no-match state with guidance to relax constraints
+  - [x] 5.6 Tests: ranking, pagination, API behavior (mock DB)
 
 - [ ] 6.0 Implement selection flow, drawer preview, final validation, and planning write
   - [ ] 6.1 Implement drawer preview (shadcn drawer) reusing recipe sheet layout
