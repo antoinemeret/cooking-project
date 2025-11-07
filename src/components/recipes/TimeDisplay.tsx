@@ -1,6 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
+import { Timer, Flame, Clock } from 'lucide-react'
 
 interface TimeDisplayProps {
   preparationTime?: number | null // in minutes
@@ -8,10 +9,6 @@ interface TimeDisplayProps {
   totalTime?: number // in minutes (if provided, will be used instead of prep + cooking)
   className?: string
 }
-
-// Icon URLs from Figma
-const imgPreparationIcon = "http://localhost:3845/assets/4f62a481fcb893b0d1ede0b0061889b569a84a9a.svg"
-const imgCookingIcon = "http://localhost:3845/assets/fefa99d42b12f5ec4b83d02f0584bf5b020faeb4.svg"
 
 export function TimeDisplay({ 
   preparationTime, 
@@ -35,7 +32,7 @@ export function TimeDisplay({
           {/* Preparation Time */}
           <div className="flex items-center justify-start relative shrink-0">
             <div className="relative shrink-0 size-4">
-              <img alt="" className="block max-w-none size-full" src={imgPreparationIcon} />
+              <Timer className="size-4 text-[#757575]" />
             </div>
             <div className="font-['Public_Sans:Regular',_sans-serif] font-normal leading-[0] relative shrink-0 text-[#757575] text-[12px] text-nowrap">
               <p className="leading-[18px] whitespace-pre"> ~{preparationTime} min</p>
@@ -50,7 +47,7 @@ export function TimeDisplay({
           {/* Cooking Time */}
           <div className="flex items-center justify-start relative shrink-0">
             <div className="relative shrink-0 size-4">
-              <img alt="" className="block max-w-none size-full" src={imgCookingIcon} />
+              <Flame className="size-4 text-[#757575]" />
             </div>
             <div className="font-['Public_Sans:Regular',_sans-serif] font-normal leading-[0] relative shrink-0 text-[#757575] text-[12px] text-nowrap">
               <p className="leading-[18px] whitespace-pre">~{cookingTime} min</p>
@@ -60,7 +57,7 @@ export function TimeDisplay({
       ) : (
         <div className="content-stretch flex items-center justify-start relative shrink-0">
           <div className="relative shrink-0 size-4">
-            <img alt="" className="block max-w-none size-full" src={imgCookingIcon} />
+            <Clock className="size-4 text-[#757575]" />
           </div>
           <div className="font-['Public_Sans:Regular',_sans-serif] font-normal leading-[0] relative shrink-0 text-[#757575] text-[12px] text-nowrap">
             <p className="leading-[18px] whitespace-pre">~{displayTime} min</p>

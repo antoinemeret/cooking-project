@@ -29,7 +29,7 @@ async function mockParseConstraints (transcript: string, language: string = 'fr'
       'six': 6, 'sept': 7, 'huit': 8, 'neuf': 9, 'dix': 10,
       // en
       'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-      'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
+      'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
     } as Record<string, number>
 
     // Explicit words (>= 2) before plural nouns
