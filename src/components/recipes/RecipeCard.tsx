@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Image from 'next/image'
-import { Calendar, MoreVertical } from 'lucide-react'
+import { CalendarPlus, MoreVertical } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { TimeDisplay } from './TimeDisplay'
 import { RecipeActionsDrawer } from './RecipeActionsDrawer'
@@ -135,7 +135,7 @@ export function RecipeCard({
                 className="bg-neutral-700 h-6 w-6 rounded-[18px] flex items-center justify-center hover:bg-neutral-800 transition-colors"
                 title="Add to planner"
               >
-                <Calendar className="h-4 w-4 text-white" />
+                <CalendarPlus className="h-4 w-4 text-white" />
               </button>
               
               <RecipeActionsDrawer
@@ -222,7 +222,7 @@ export function RecipeCard({
             className="bg-neutral-700 h-6 w-6 rounded-[18px] flex items-center justify-center hover:bg-neutral-800 transition-colors"
             title="Add to planner"
           >
-            <Calendar className="h-4 w-4 text-white" />
+            <CalendarPlus className="h-4 w-4 text-white" />
           </button>
           
           <DropdownMenu>

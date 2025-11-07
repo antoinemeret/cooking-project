@@ -1,7 +1,7 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import { Timer, Flame, Clock } from 'lucide-react'
+import { Slice, Microwave } from 'lucide-react'
 
 interface TimeDisplayProps {
   preparationTime?: number | null // in minutes
@@ -32,7 +32,7 @@ export function TimeDisplay({
           {/* Preparation Time */}
           <div className="flex items-center justify-start relative shrink-0">
             <div className="relative shrink-0 size-4">
-              <Timer className="size-4 text-[#757575]" />
+              <Slice className="size-4 text-[#757575]" />
             </div>
             <div className="font-['Public_Sans:Regular',_sans-serif] font-normal leading-[0] relative shrink-0 text-[#757575] text-[12px] text-nowrap">
               <p className="leading-[18px] whitespace-pre"> ~{preparationTime} min</p>
@@ -47,7 +47,7 @@ export function TimeDisplay({
           {/* Cooking Time */}
           <div className="flex items-center justify-start relative shrink-0">
             <div className="relative shrink-0 size-4">
-              <Flame className="size-4 text-[#757575]" />
+              <Microwave className="size-4 text-[#757575]" />
             </div>
             <div className="font-['Public_Sans:Regular',_sans-serif] font-normal leading-[0] relative shrink-0 text-[#757575] text-[12px] text-nowrap">
               <p className="leading-[18px] whitespace-pre">~{cookingTime} min</p>
@@ -57,7 +57,7 @@ export function TimeDisplay({
       ) : (
         <div className="content-stretch flex items-center justify-start relative shrink-0">
           <div className="relative shrink-0 size-4">
-            <Clock className="size-4 text-[#757575]" />
+            <Microwave className="size-4 text-[#757575]" />
           </div>
           <div className="font-['Public_Sans:Regular',_sans-serif] font-normal leading-[0] relative shrink-0 text-[#757575] text-[12px] text-nowrap">
             <p className="leading-[18px] whitespace-pre">~{displayTime} min</p>
