@@ -61,7 +61,14 @@ async function mockParseConstraints (transcript: string, language: string = 'fr'
   const seasonal = lower.includes('saison')
 
   // Per-meal extraction by scanning clauses separated by commas/"et"
-  type MealDetail = { includeIngredients?: string[], cookingMethod?: string[], dietaryRestrictions?: string[] }
+  type MealDetail = {
+    includeIngredients?: string[]
+    cookingMethod?: string[]
+    dietaryRestrictions?: string[]
+    excludeIngredients?: string[]
+    cuisineStyle?: string[]
+    dishType?: string[]
+  }
   const mealDetails: MealDetail[] = []
   const clauses = lower
     .split(/[,;]+|\bet\b/g)
