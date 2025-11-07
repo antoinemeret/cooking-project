@@ -119,8 +119,12 @@ export function RecipeSuggestionList ({
     setPreviewRecipeId(null)
   }
 
-  const handleSelect = (recipeId: string) => {
+  const handleSelectFromCard = (recipeId: string) => {
     onRecipeSelect(recipeId)
+  }
+
+  const handleSelectFromDrawer = (recipe: RecipeSuggestion) => {
+    onRecipeSelect(recipe.id)
   }
 
   // Loading state
@@ -195,7 +199,7 @@ export function RecipeSuggestionList ({
                 key={recipe.id}
                 recipe={recipe}
                 onPreview={handlePreview}
-                onSelect={handleSelect}
+                onSelect={handleSelectFromCard}
               />
             ))}
           </div>
@@ -220,7 +224,7 @@ export function RecipeSuggestionList ({
                 key={recipe.id}
                 recipe={recipe}
                 onPreview={handlePreview}
-                onSelect={handleSelect}
+                onSelect={handleSelectFromCard}
               />
             ))}
           </div>
@@ -252,7 +256,7 @@ export function RecipeSuggestionList ({
         recipeId={previewRecipeId}
         isOpen={previewRecipeId !== null}
         onClose={handleClosePreview}
-        onSelect={handleSelect}
+        onSelect={handleSelectFromDrawer}
       />
     </div>
   )

@@ -801,7 +801,10 @@ What would you like to cook? 🍳`
 
     // Filter by cooking time
     if (session.currentCriteria.maxCookingTime) {
-      filtered = filtered.filter(recipe => recipe.time <= session.currentCriteria.maxCookingTime!)
+      filtered = filtered.filter(recipe => {
+        const totalTime = (recipe.preparationTime || 0) + (recipe.cookingTime || 0)
+        return totalTime <= session.currentCriteria.maxCookingTime!
+      })
     }
 
     // Exclude already accepted/declined recipes
@@ -819,7 +822,9 @@ What would you like to cook? 🍳`
         return b.grade - a.grade
       }
       // Then by time (shorter cooking time preferred)
-      return a.time - b.time
+      const aTime = (a.preparationTime || 0) + (a.cookingTime || 0)
+      const bTime = (b.preparationTime || 0) + (b.cookingTime || 0)
+      return aTime - bTime
     })
   }
 
@@ -834,7 +839,7 @@ What would you like to cook? 🍳`
       tags: (recipe as any).tags || '[]', // Handle missing tags field
       startSeason: recipe.startSeason,
       endSeason: recipe.endSeason,
-      time: recipe.time,
+      time: (recipe.preparationTime || 0) + (recipe.cookingTime || 0),
       grade: recipe.grade
     }
   }

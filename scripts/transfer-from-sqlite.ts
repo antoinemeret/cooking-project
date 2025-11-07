@@ -41,7 +41,6 @@ async function main () {
         startSeason: r.startSeason,
         endSeason: r.endSeason,
         grade: r.grade,
-        time: r.time,
         preparationTime: r.preparationTime,
         cookingTime: r.cookingTime,
         image: r.image
@@ -57,7 +56,6 @@ async function main () {
         startSeason: r.startSeason,
         endSeason: r.endSeason,
         grade: r.grade,
-        time: r.time,
         preparationTime: r.preparationTime,
         cookingTime: r.cookingTime,
         image: r.image,

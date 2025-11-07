@@ -34,7 +34,8 @@ async function main() {
       startSeason: 6, // June
       endSeason: 9,   // September
       grade: 3,
-      time: 30,
+      preparationTime: 15,
+      cookingTime: 15,
       ingredients: {
         connect: [{ id: tomato.id }, { id: basil.id }],
       },
