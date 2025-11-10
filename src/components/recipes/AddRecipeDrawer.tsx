@@ -6,11 +6,7 @@ import {
   DrawerContent,
   DrawerTrigger,
 } from '@/components/ui/drawer'
-
-// Icons from Figma
-const imgLucideSquarePen = "http://localhost:3845/assets/a9b3aa1586f0899617b085451b8478870a9ee62e.svg"
-const imgLucideLink = "http://localhost:3845/assets/796ecfb2a3db7792b5852d9215729119e16e003b.svg"
-const imgLucideCamera = "http://localhost:3845/assets/3d4ca7291e612a6aeb50891ed0343417563c758c.svg"
+import { SquarePen, Link, Camera } from 'lucide-react'
 
 interface AddRecipeDrawerProps {
   children: React.ReactNode
@@ -73,13 +69,7 @@ export function AddRecipeDrawer({
                 }}
                 className="bg-[#f3f3f3] h-[92px] w-full rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
               >
-                <div className="w-8 h-8 flex items-center justify-center">
-                  <img 
-                    alt="Manual add icon" 
-                    className="w-full h-full" 
-                    src={imgLucideSquarePen} 
-                  />
-                </div>
+                <SquarePen className="w-8 h-8 text-[#212b36]" />
               </button>
               <span className="font-normal text-[#212b36] text-[12px] leading-[18px] text-center w-full">
                 Manuellement
@@ -96,13 +86,7 @@ export function AddRecipeDrawer({
                 }}
                 className="bg-[#f3f3f3] h-[92px] w-full rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
               >
-                <div className="w-8 h-8 flex items-center justify-center">
-                  <img 
-                    alt="Link add icon" 
-                    className="w-full h-full" 
-                    src={imgLucideLink} 
-                  />
-                </div>
+                <Link className="w-8 h-8 text-[#212b36]" />
               </button>
               <span className="font-normal text-[#212b36] text-[12px] leading-[18px] text-center w-full">
                 Blog ou video
@@ -119,13 +103,7 @@ export function AddRecipeDrawer({
                 }}
                 className="bg-[#f3f3f3] h-[92px] w-full rounded-[8px] flex items-center justify-center hover:opacity-80 transition-opacity"
               >
-                <div className="w-8 h-8 flex items-center justify-center">
-                  <img 
-                    alt="Photo add icon" 
-                    className="w-full h-full" 
-                    src={imgLucideCamera} 
-                  />
-                </div>
+                <Camera className="w-8 h-8 text-[#212b36]" />
               </button>
               <span className="font-normal text-[#212b36] text-[12px] leading-[18px] text-center w-full">
                 Photo

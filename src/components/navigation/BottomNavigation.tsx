@@ -12,12 +12,6 @@ import { Input } from '@/components/ui/input'
 import { ImportRecipeDialog } from '@/components/recipes/ImportRecipeDialog'
 import { BookOpen, Plus, Calendar, ShoppingCart } from 'lucide-react'
 
-// Icons from Figma
-const imgRecipes = "http://localhost:3845/assets/b00b13a749c72fead8836083925fc6961fa66ea5.svg"
-const imgAddRecipe = "http://localhost:3845/assets/862d83f8f85090ab730cef5fe3e410a98a807cba.svg"
-const imgPlanner = "http://localhost:3845/assets/3e7e967acf0a96d77bf00c1100521dd3f6efa81e.svg"
-const imgGrocery = "http://localhost:3845/assets/49c3e0f7fae9b7faf1ddd28c3c53b7d277c23fa4.svg"
-
 interface NavItem {
   href?: string
   label: string

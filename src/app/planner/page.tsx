@@ -4,10 +4,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { RefreshCw, Trash2, Clock, Calendar, CheckCircle2, Plus, Star } from 'lucide-react'
-
-// Icon URL from Figma
-const imgLucideCalendarMinus = "http://localhost:3845/assets/ea629e5a8e489005823ce57a22052c7486bf663c.svg"
+import { RefreshCw, Trash2, Clock, Calendar, CheckCircle2, Plus, Star, X } from 'lucide-react'
 import { TimeDisplay } from '@/components/recipes/TimeDisplay'
 import { ServingsDisplay } from '@/components/recipes/ServingsDisplay'
 import { RecipeSheet } from '@/components/recipes/RecipeSheet'
@@ -30,6 +27,8 @@ interface PlannedRecipe {
     grade: number
     tags?: string
     image?: string | null
+    preparationTime?: number | null
+    cookingTime?: number | null
   }
 }
 
@@ -142,9 +141,10 @@ function PlannedRecipeCard({
 
         {/* Duration and Servings Tags */}
         <div className="flex gap-2 md:mt-2 items-center">
-          {/* Time Display - shows prep and cooking times grouped together */}
+          {/* Time Display - shows prep and cooking times separately when available */}
           <TimeDisplay 
-            totalTime={recipe.time}
+            preparationTime={recipe.preparationTime}
+            cookingTime={recipe.cookingTime}
           />
 
           {/* Servings Tag */}
@@ -158,11 +158,7 @@ function PlannedRecipeCard({
         className="flex-shrink-0 w-[38px] h-[38px] flex items-center justify-center hover:opacity-80 transition-opacity"
         aria-label={`Remove ${recipe.title} from planner`}
       >
-        <img 
-          alt="Remove from planner" 
-          className="h-6 w-6" 
-          src={imgLucideCalendarMinus} 
-        />
+        <X className="h-6 w-6 text-[#212b36]" />
       </button>
     </div>
   )
@@ -196,7 +192,9 @@ export default function PlannerPage() {
           summary: "Classic Italian pasta dish with eggs, cheese, and pancetta",
           time: 25,
           grade: 3,
-          tags: '["Italian", "Pasta", "Quick"]'
+          tags: '["Italian", "Pasta", "Quick"]',
+          preparationTime: 10,
+          cookingTime: 15
         }
       },
       {
@@ -210,7 +208,9 @@ export default function PlannerPage() {
           summary: "Fresh romaine lettuce with homemade Caesar dressing and croutons",
           time: 15,
           grade: 2,
-          tags: '["Salad", "Vegetarian", "Light"]'
+          tags: '["Salad", "Vegetarian", "Light"]',
+          preparationTime: 10,
+          cookingTime: 5
         }
       },
       {
@@ -224,7 +224,9 @@ export default function PlannerPage() {
           summary: "Juicy grilled chicken breast with herbs and spices",
           time: 30,
           grade: 3,
-          tags: '["Protein", "Healthy", "Grilled"]'
+          tags: '["Protein", "Healthy", "Grilled"]',
+          preparationTime: 15,
+          cookingTime: 15
         }
       }
     ]

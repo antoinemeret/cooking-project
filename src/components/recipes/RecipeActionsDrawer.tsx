@@ -10,13 +10,8 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from '@/components/ui/drawer'
+import { SquarePen, Heart, CalendarPlus, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-
-// Icons from Figma
-const imgLucideSquarePen = "http://localhost:3845/assets/7e3d73e37d9ad66bf62d0709bc6333d76ee9c1dc.svg"
-const imgLucideHeart = "http://localhost:3845/assets/4a1ad08b62facbc2c95c3e9481b727647952505d.svg"
-const imgLucideCalendarPlus = "http://localhost:3845/assets/c723c26a3d134af12c1c73beb11809bc5d926334.svg"
-const imgLucideTrash2 = "http://localhost:3845/assets/9ff76882fe31ca63ef622b2fd64e5ce180db9779.svg"
 
 interface Recipe {
   id: number
@@ -118,11 +113,7 @@ export function RecipeActionsDrawer({
               className="flex gap-3 items-center text-left hover:bg-muted/50 rounded-lg p-2 -mx-2 transition-colors"
             >
               <div className="w-6 h-6 flex items-center justify-center">
-                <img 
-                  alt="Edit icon" 
-                  className="w-full h-full" 
-                  src={imgLucideSquarePen} 
-                />
+                <SquarePen className="w-6 h-6 text-[#212b36]" />
               </div>
               <span className="font-normal text-[#212b36] text-base leading-5">
                 Modifier
@@ -135,11 +126,7 @@ export function RecipeActionsDrawer({
               className="flex gap-3 items-center text-left hover:bg-muted/50 rounded-lg p-2 -mx-2 transition-colors"
             >
               <div className="w-6 h-6 flex items-center justify-center">
-                <img 
-                  alt="Heart icon" 
-                  className="w-full h-full" 
-                  src={imgLucideHeart} 
-                />
+                <Heart className="w-6 h-6 text-[#212b36]" />
               </div>
               <span className="font-normal text-[#212b36] text-base leading-5">
                 Ajouter en favori
@@ -152,11 +139,7 @@ export function RecipeActionsDrawer({
               className="flex gap-3 items-center text-left hover:bg-muted/50 rounded-lg p-2 -mx-2 transition-colors"
             >
               <div className="w-6 h-6 flex items-center justify-center">
-                <img 
-                  alt="Calendar plus icon" 
-                  className="w-full h-full" 
-                  src={imgLucideCalendarPlus} 
-                />
+                <CalendarPlus className="w-6 h-6 text-[#212b36]" />
               </div>
               <span className="font-normal text-[#212b36] text-base leading-5">
                 Ajouter au planning
@@ -169,11 +152,7 @@ export function RecipeActionsDrawer({
               className="flex gap-3 items-center text-left hover:bg-muted/50 rounded-lg p-2 -mx-2 transition-colors"
             >
               <div className="w-6 h-6 flex items-center justify-center">
-                <img 
-                  alt="Trash icon" 
-                  className="w-full h-full" 
-                  src={imgLucideTrash2} 
-                />
+                <Trash2 className="w-6 h-6 text-[#212b36]" />
               </div>
               <span className="font-normal text-[#212b36] text-base leading-5">
                 Supprimer
