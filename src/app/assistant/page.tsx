@@ -38,56 +38,77 @@ function InterpretationStep() {
   const currentState = useAssistantState()
   const parsedRef = useRef(false)
 
-  // Parse constraints when component mounts
+  // Parse constraints when transcription result is available and we don't have interpretation yet
   useEffect(() => {
-    console.log('[InterpretationStep] mount/effect', {
-      currentState,
+    console.log('[InterpretationStep] effect triggered', {
       hasTranscript: !!transcriptionResult,
       hasInterpretation: !!interpretation,
-      parsedRef: parsedRef.current
+      parsedRef: parsedRef.current,
+      currentState
     })
-    if (!transcriptionResult) return
-    if (interpretation) return
-    if (parsedRef.current) return
-    parsedRef.current = true
-    console.log('[InterpretationStep] triggering parse with transcript:', transcriptionResult.transcript)
-    parseConstraints(transcriptionResult.transcript)
-  }, [transcriptionResult, interpretation, currentState])
-
-  const parseConstraints = async (transcript: string) => {
-    try {
-      setLoading(true)
-      console.log('[InterpretationStep] parseConstraints:start')
-      
-      const response = await fetch('/api/constraints/parse', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          transcript,
-          language: 'fr'
-        })
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-
-      const result: ConstraintParseResponse = await response.json()
-      console.log('[InterpretationStep] parseConstraints:success', result)
-      // Ensure state flip even under Strict Mode by calling the store directly
-      const store = useAssistantStore.getState()
-      if (store.setInterpretation) store.setInterpretation(result)
-      if (store.setState) store.setState('editing')
-    } catch (error) {
-      console.error('[InterpretationStep] parseConstraints:error', error)
-      setError('Erreur lors de l\'interprétation des consignes. Veuillez réessayer.')
-    } finally {
-      setLoading(false)
-      console.log('[InterpretationStep] parseConstraints:done')
+    
+    // Don't parse if we already have an interpretation
+    if (interpretation) {
+      console.log('[InterpretationStep] Interpretation already exists, skipping parse')
+      return
     }
-  }
+    
+    // Don't parse if we don't have a transcription result
+    if (!transcriptionResult) {
+      console.log('[InterpretationStep] No transcription result, skipping')
+      return
+    }
+    
+    // Don't parse if we've already initiated parsing
+    if (parsedRef.current) {
+      console.log('[InterpretationStep] Already parsed or parsing in progress, skipping')
+      return
+    }
+    
+    // Mark as parsing to prevent duplicate calls
+    parsedRef.current = true
+    console.log('[InterpretationStep] Starting parse with transcript:', transcriptionResult.transcript)
+    
+    const parseConstraints = async () => {
+      try {
+        setLoading(true)
+        console.log('[InterpretationStep] parseConstraints:start')
+        
+        const response = await fetch('/api/constraints/parse', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            transcript: transcriptionResult.transcript,
+            language: 'fr'
+          })
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error('[InterpretationStep] API error response:', errorText)
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const result: ConstraintParseResponse = await response.json()
+        console.log('[InterpretationStep] parseConstraints:success', result)
+        
+        // This will update the store and trigger a re-render
+        setInterpretation(result)
+        
+        console.log('[InterpretationStep] setInterpretation completed, interpretation should now exist')
+      } catch (error) {
+        console.error('[InterpretationStep] parseConstraints:error', error)
+        setError('Erreur lors de l\'interprétation des consignes. Veuillez réessayer.')
+        setLoading(false)
+        // Reset parsedRef on error so user can retry
+        parsedRef.current = false
+      }
+    }
+    
+    parseConstraints()
+  }, [transcriptionResult, interpretation, setInterpretation, setError, setLoading])
 
   const handleValidate = () => {
     // Move to suggestions for the first meal
@@ -102,15 +123,46 @@ function InterpretationStep() {
     store.setState('editing')
   }
 
+  // Show loading state while parsing
+  const isLoading = useAssistantStore(s => s.isLoading)
+  
+  console.log('[InterpretationStep] Render', {
+    hasInterpretation: !!interpretation,
+    hasTranscript: !!transcriptionResult,
+    isLoading,
+    currentState,
+    parsedRef: parsedRef.current
+  })
+  
   if (!interpretation) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] space-y-6">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-        <p className="text-muted-foreground">Interprétation des consignes... ({currentState})</p>
+        <p className="text-muted-foreground">
+          {isLoading 
+            ? 'Interprétation des consignes...' 
+            : transcriptionResult 
+              ? 'Traitement de la transcription...'
+              : 'En attente de transcription...'}
+        </p>
+        {transcriptionResult && (
+          <p className="text-xs text-muted-foreground">
+            Transcript: {transcriptionResult.transcript.substring(0, 50)}...
+          </p>
+        )}
       </div>
     )
   }
 
+  // Show interpretation summary when we have the interpretation
+  console.log('[InterpretationStep] Rendering InterpretationSummary', { 
+    interpretation: {
+      confidence: interpretation.confidence,
+      interpretation: interpretation.interpretation,
+      constraints: interpretation.constraints
+    }
+  })
+  
   return (
     <InterpretationSummary
       interpretation={interpretation}
@@ -298,9 +350,12 @@ function ValidationStep() {
     if (selectedRecipes.length === 0) return
     
     setIsValidating(true)
-    const userId = 'anonymous'
+    // Use 'user123' to match the planner page - TODO: Replace with actual user ID from auth
+    const userId = 'user123'
     
     try {
+      console.log(`[ValidationStep] Starting validation for ${selectedRecipes.length} recipes with userId: ${userId}`)
+      
       // Add all recipes to planner
       const results = await Promise.allSettled(
         selectedRecipes.map(async (selection) => {
@@ -309,7 +364,7 @@ function ValidationStep() {
             throw new Error(`Invalid recipe ID: ${selection.recipe.id}`)
           }
           
-          console.log(`[ValidationStep] Adding recipe ${recipeId} (${selection.recipe.name}) to planner`)
+          console.log(`[ValidationStep] Adding recipe ${recipeId} (${selection.recipe.name}) to planner for userId: ${userId}`)
           
           const response = await fetch('/api/planner', {
             method: 'POST',
@@ -320,35 +375,59 @@ function ValidationStep() {
             })
           })
           
+          const responseText = await response.text()
+          console.log(`[ValidationStep] Response for recipe ${recipeId}:`, {
+            status: response.status,
+            statusText: response.statusText,
+            body: responseText
+          })
+          
           if (!response.ok) {
-            const data = await response.json().catch(() => ({}))
+            let data
+            try {
+              data = JSON.parse(responseText)
+            } catch {
+              data = { error: responseText || 'Unknown error' }
+            }
+            
             // Don't fail on 409 (already in planner) - that's okay
             if (response.status !== 409) {
-              throw new Error(data.error || `Failed to add recipe ${selection.recipe.name} to planner`)
+              throw new Error(data.error || `Failed to add recipe ${selection.recipe.name} to planner (status: ${response.status})`)
             } else {
-              console.log(`[ValidationStep] Recipe ${recipeId} already in planner`)
+              console.log(`[ValidationStep] Recipe ${recipeId} already in planner (409)`)
+              return { success: true, alreadyExists: true, recipeId }
             }
           } else {
-            const result = await response.json()
+            const result = JSON.parse(responseText)
             console.log(`[ValidationStep] Successfully added recipe ${recipeId}:`, result)
+            return { success: true, alreadyExists: false, recipeId, result }
           }
         })
       )
       
+      // Log all results
+      console.log('[ValidationStep] All results:', results)
+      
       // Check if any requests failed (excluding 409 errors which we handle above)
       const failures = results.filter(
-        result => result.status === 'rejected' && 
-        !(result.reason instanceof Error && result.reason.message.includes('already in planner'))
+        result => result.status === 'rejected'
       )
       
       if (failures.length > 0) {
         const errorMessages = failures
-          .map(f => f.status === 'rejected' ? f.reason?.message || 'Unknown error' : '')
+          .map(f => {
+            if (f.status === 'rejected') {
+              return f.reason?.message || f.reason?.toString() || 'Unknown error'
+            }
+            return ''
+          })
           .filter(Boolean)
+        console.error('[ValidationStep] Some recipes failed to add:', errorMessages)
         throw new Error(`Failed to add some recipes: ${errorMessages.join(', ')}`)
       }
       
-      console.log('[ValidationStep] All recipes added successfully, navigating to planner')
+      const successes = results.filter(r => r.status === 'fulfilled')
+      console.log(`[ValidationStep] Successfully processed ${successes.length}/${selectedRecipes.length} recipes`)
       
       // Set state to 'completed' first to prevent navigation guard from showing dialog
       // This will trigger the CompletedStep component which handles navigation and cleanup
@@ -506,13 +585,11 @@ function CompletedStep() {
   const { reset } = useAssistantStore()
 
   useEffect(() => {
-    // Navigate immediately when component mounts
-    router.push('/planner')
-    // Reset state after a short delay to ensure navigation happens first
-    const timer = setTimeout(() => {
-      reset()
-    }, 500)
-    return () => clearTimeout(timer)
+    // Reset state first to clear the store
+    reset()
+    // Navigate to planner - the page will automatically fetch the latest data
+    // Use window.location to force a full page reload and ensure data is fresh
+    window.location.href = '/planner'
   }, [router, reset])
 
   return (
@@ -528,15 +605,21 @@ function AssistantPageContent() {
   const { reset, interpretation } = useAssistantStore()
   const { navigateWithGuard } = useAssistantNavigation()
 
-  // Reset state only when component unmounts (but not if we're in completed state)
+  // Reset state only when component unmounts
+  // Use a ref to track the current state at unmount time
+  const currentStateRef = useRef(currentState)
+  useEffect(() => {
+    currentStateRef.current = currentState
+  }, [currentState])
+  
   useEffect(() => {
     return () => {
       // Don't reset if we're navigating to planner after completion
-      if (currentState !== 'completed') {
+      if (currentStateRef.current !== 'completed') {
         reset()
       }
     }
-  }, [reset, currentState])
+  }, [reset])
 
   const handleClose = () => {
     const shouldNavigate = navigateWithGuard('/planner')
@@ -546,7 +629,11 @@ function AssistantPageContent() {
   }
 
   const renderCurrentStep = () => {
-    console.log('[AssistantPage] renderCurrentStep', { currentState, hasInterpretation: !!interpretation })
+    console.log('[AssistantPage] renderCurrentStep', { 
+      currentState, 
+      hasInterpretation: !!interpretation,
+      interpretationKeys: interpretation ? Object.keys(interpretation) : null
+    })
     switch (currentState) {
       case 'idle':
       case 'recording':
@@ -555,11 +642,12 @@ function AssistantPageContent() {
       case 'interpreting':
         return <InterpretationStep />
       case 'editing':
-        // Render the summary directly when editing
+        // Render constraint editing step when editing
         if (!interpretation) {
           console.warn('[AssistantPage] editing state without interpretation, falling back to InterpretationStep')
           return <InterpretationStep />
         }
+        console.log('[AssistantPage] Rendering ConstraintEditingStep with interpretation')
         return <ConstraintEditingStep />
       case 'suggesting':
         return <SuggestionsStep />

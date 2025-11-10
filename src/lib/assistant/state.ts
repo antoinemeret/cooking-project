@@ -93,6 +93,12 @@ export const useAssistantStore = create<AssistantStoreType>()(
       },
       
       setInterpretation: (interpretation: ConstraintParseResponse) => {
+        console.log('[setInterpretation] Called with:', {
+          interpretation: interpretation.interpretation,
+          confidence: interpretation.confidence,
+          constraints: interpretation.constraints
+        })
+        
         // Ensure seasonal is always true by default
         const constraintsWithDefaults = {
           ...interpretation.constraints,
@@ -102,12 +108,18 @@ export const useAssistantStore = create<AssistantStoreType>()(
           }
         }
         
-        set({ 
+        // Keep state as 'interpreting' so InterpretationStep can display InterpretationSummary
+        // When user clicks "Corriger", handleEdit will change state to 'editing'
+        const newState = {
           interpretation,
           constraints: constraintsWithDefaults,
-          currentState: 'editing',
+          currentState: 'interpreting' as AssistantState,
           isLoading: false 
-        }, false, 'setInterpretation')
+        }
+        
+        console.log('[setInterpretation] Setting state:', newState)
+        set(newState, false, 'setInterpretation')
+        console.log('[setInterpretation] State updated, current state:', get().currentState, 'has interpretation:', !!get().interpretation)
       },
 
       updateGeneralConstraints: (updates: Partial<GeneralConstraints>) => {
