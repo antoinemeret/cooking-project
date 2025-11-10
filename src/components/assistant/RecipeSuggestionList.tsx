@@ -11,7 +11,7 @@ import type { SuggestionSections, RecipeSuggestion } from '@/lib/assistant/types
 
 interface RecipeSuggestionListProps {
   mealIndex: number
-  onRecipeSelect: (recipeId: string) => void
+  onRecipeSelect: (recipe: RecipeSuggestion) => void
 }
 
 export function RecipeSuggestionList ({
@@ -120,11 +120,17 @@ export function RecipeSuggestionList ({
   }
 
   const handleSelectFromCard = (recipeId: string) => {
-    onRecipeSelect(recipeId)
+    // Find the recipe from current suggestions
+    if (!suggestions) return
+    const allRecipes = [...suggestions.perfectMatches, ...suggestions.partialMatches]
+    const recipe = allRecipes.find(r => r.id === recipeId)
+    if (recipe) {
+      onRecipeSelect(recipe)
+    }
   }
 
   const handleSelectFromDrawer = (recipe: RecipeSuggestion) => {
-    onRecipeSelect(recipe.id)
+    onRecipeSelect(recipe)
   }
 
   // Loading state
