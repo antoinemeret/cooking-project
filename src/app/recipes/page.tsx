@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button'
 import { Plus, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { ImportRecipeDialog } from '@/components/recipes/ImportRecipeDialog'
 
 export default function RecipesPage() {
   const [recipes, setRecipes] = useState([])
@@ -20,6 +22,7 @@ export default function RecipesPage() {
   const containerRef = useRef<HTMLDivElement>(null)
 
   // Add recipe functionality
+  const [isAddRecipeOptionsDialogOpen, setIsAddRecipeOptionsDialogOpen] = useState(false)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [isManualMode, setIsManualMode] = useState(false)
   const [isUrlInputDialogOpen, setIsUrlInputDialogOpen] = useState(false)
@@ -27,6 +30,9 @@ export default function RecipesPage() {
   const [importError, setImportError] = useState("")
   const [isImporting, setIsImporting] = useState(false)
   const [importStatus, setImportStatus] = useState("Add new")
+  const [importedRecipe, setImportedRecipe] = useState<any>(null)
+  const [isVideoProcessing, setIsVideoProcessing] = useState(false)
+  const [videoProgress, setVideoProgress] = useState<any>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
 
   async function fetchRecipes() {
@@ -92,16 +98,69 @@ export default function RecipesPage() {
 
   // Add recipe handlers
   const handleManualAdd = () => {
-    setIsImportDialogOpen(true)
+    setIsAddRecipeOptionsDialogOpen(false)
+    setImportedRecipe({ title: "", rawIngredients: [], instructions: "", tags: [] })
     setIsManualMode(true)
+    setIsImportDialogOpen(true)
   }
 
   const handleLinkAdd = () => {
+    setIsAddRecipeOptionsDialogOpen(false)
     setIsUrlInputDialogOpen(true)
   }
 
   const handlePhotoAdd = () => {
+    setIsAddRecipeOptionsDialogOpen(false)
     photoInputRef.current?.click()
+  }
+
+  const handleUrlSubmit = async () => {
+    if (!importUrl.trim()) {
+      setImportError("Please enter a URL")
+      return
+    }
+
+    setIsImporting(true)
+    setImportError("")
+    setImportStatus("Processing URL...")
+
+    try {
+      const response = await fetch("/api/scrape", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ url: importUrl }),
+      })
+
+      if (!response.ok) {
+        throw new Error("URL import failed")
+      }
+
+      const result = await response.json()
+      
+      if (result.recipe) {
+        setImportedRecipe({
+          title: result.recipe.title,
+          rawIngredients: result.recipe.rawIngredients || [],
+          instructions: result.recipe.instructions || '',
+          tags: result.recipe.suggestedTags || [],
+          candidateImages: result.images || []
+        })
+        setIsUrlInputDialogOpen(false)
+        setIsManualMode(false)
+        setIsImportDialogOpen(true)
+        setImportUrl("")
+      } else {
+        throw new Error(result.error || "No recipe data received")
+      }
+    } catch (error: any) {
+      console.error("URL import error:", error)
+      setImportError(error.message || "Failed to import recipe from URL")
+    } finally {
+      setIsImporting(false)
+      setImportStatus("Add new")
+    }
   }
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -223,10 +282,34 @@ export default function RecipesPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl sm:text-2xl font-bold">Recipes</h1>
-        <Button size="sm" className="gap-2 hidden sm:flex">
-          <Plus className="h-4 w-4" />
-          Add Recipe
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" className="gap-2 hidden sm:flex" disabled={isImporting}>
+              {isImporting ? importStatus : 'Add Recipe'}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem
+              onSelect={() => {
+                setImportedRecipe({ title: '', rawIngredients: [], instructions: '', tags: [] })
+                setIsManualMode(true)
+                setIsImportDialogOpen(true)
+              }}
+            >
+              Create manually
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                setIsUrlInputDialogOpen(true)
+              }}
+            >
+              Import from URL or Video
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => photoInputRef.current?.click()}>
+              Import from Photo
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Search Bar */}
@@ -284,6 +367,65 @@ export default function RecipesPage() {
         className="hidden"
         onChange={handleFileChange}
         disabled={isImporting}
+      />
+
+      {/* Desktop uses dropdown menu in header; no separate options dialog */}
+
+      {/* URL Input Dialog */}
+      <Dialog open={isUrlInputDialogOpen} onOpenChange={setIsUrlInputDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Import Recipe from URL or Video</DialogTitle>
+            <DialogDescription>
+              Paste a recipe URL or video link to automatically extract the recipe content.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <Input
+              type="text"
+              placeholder="Paste recipe URL or video link..."
+              value={importUrl}
+              onChange={e => setImportUrl(e.target.value)}
+              disabled={isImporting}
+            />
+            
+            {importError && (
+              <Alert variant="destructive">
+                <AlertDescription>{importError}</AlertDescription>
+              </Alert>
+            )}
+            
+            <Button onClick={handleUrlSubmit} disabled={isImporting || !importUrl} className="w-full">
+              {isImporting ? 'Importing...' : 'Import'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Recipe Dialog */}
+      <ImportRecipeDialog
+        open={isImportDialogOpen}
+        onOpenChange={setIsImportDialogOpen}
+        recipe={importedRecipe}
+        setRecipe={setImportedRecipe}
+        isManualMode={isManualMode}
+        setIsManualMode={setIsManualMode}
+        onImport={() => {
+          fetchRecipes()
+          window.dispatchEvent(new CustomEvent('recipeAdded'))
+        }}
+        setProcessingRecipeId={() => {}}
+        url={importUrl}
+        setUrl={setImportUrl}
+        onUrlImport={handleUrlSubmit}
+        loading={isImporting}
+        error={importError}
+        videoProgress={videoProgress}
+        isVideoProcessing={isVideoProcessing}
+        onRefresh={() => {
+          fetchRecipes()
+          window.dispatchEvent(new CustomEvent('recipeAdded'))
+        }}
       />
     </div>
   )

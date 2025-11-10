@@ -25,7 +25,8 @@ export async function POST(req: NextRequest) {
         startSeason: 1, // Set defaults or get from user/LLM
         endSeason: 12,
         grade: 0,
-        time: 0
+        preparationTime: 0,
+        cookingTime: 0
         // Do not connect ingredients here
       },
       include: { ingredients: true }

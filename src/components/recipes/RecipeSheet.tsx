@@ -6,14 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { ChevronLeft, SquarePen, Heart, Trash2, CalendarPlus } from 'lucide-react'
 import { toast } from 'sonner'
-
-// Icons from Figma
-const imgLucideChevronLeft = "http://localhost:3845/assets/3d903a736f86fc7203802f6097be4826b802ccf6.svg"
-const imgEdit = "http://localhost:3845/assets/c3549ed0bdee92b9c336d0f9b9428a519ab43ea2.svg"
-const imgAddToFavorites = "http://localhost:3845/assets/cfc2b1c4b81404af51852cc89168252b4789935f.svg"
-const imgDelete = "http://localhost:3845/assets/2e8d125ae166d50870f2f90961ea145195ef5a86.svg"
-const imgLucideCalendarPlus = "http://localhost:3845/assets/5b37e4e7fa94f4aa8b4672723b7b610c95d174fe.svg"
 
 interface Recipe {
   id: number
@@ -294,9 +288,9 @@ export function RecipeSheet({
             {/* Back button */}
             <button
               onClick={onClose}
-              className="absolute left-5 size-6 top-2.5 z-10"
+              className="absolute left-5 size-6 top-2.5 z-10 flex items-center justify-center"
             >
-              <img alt="Back" className="block max-w-none size-full" src={imgLucideChevronLeft} />
+              <ChevronLeft className="size-6 text-white" />
             </button>
             
             {/* Recipe title card */}
@@ -318,24 +312,24 @@ export function RecipeSheet({
                   ) : (
                     <button
                       onClick={() => handleAction('edit')}
-                      className="relative shrink-0 size-[22px] hover:opacity-80 transition-opacity"
+                      className="relative shrink-0 size-[22px] hover:opacity-80 transition-opacity flex items-center justify-center"
                     >
-                      <img alt="Edit" className="block max-w-none size-full" src={imgEdit} />
+                      <SquarePen className="size-[22px] text-[#212b36]" />
                     </button>
                   )}
                   {!isEditMode && (
                     <>
                       <button
                         onClick={() => handleAction('favorite')}
-                        className="relative shrink-0 size-[22px] hover:opacity-80 transition-opacity"
+                        className="relative shrink-0 size-[22px] hover:opacity-80 transition-opacity flex items-center justify-center"
                       >
-                        <img alt="Add to favorites" className="block max-w-none size-full" src={imgAddToFavorites} />
+                        <Heart className="size-[22px] text-[#212b36]" />
                       </button>
                       <button
                         onClick={() => handleAction('delete')}
-                        className="relative shrink-0 size-[22px] hover:opacity-80 transition-opacity"
+                        className="relative shrink-0 size-[22px] hover:opacity-80 transition-opacity flex items-center justify-center"
                       >
-                        <img alt="Delete" className="block max-w-none size-full" src={imgDelete} />
+                        <Trash2 className="size-[22px] text-[#212b36]" />
                       </button>
                     </>
                   )}
@@ -343,11 +337,9 @@ export function RecipeSheet({
                 {!isEditMode && (
                   <button
                     onClick={handleAddToPlanner}
-                    className="bg-neutral-700 overflow-hidden relative rounded-[18px] shrink-0 size-8 hover:opacity-80 transition-opacity"
+                    className="bg-neutral-700 overflow-hidden relative rounded-[18px] shrink-0 size-8 hover:opacity-80 transition-opacity flex items-center justify-center"
                   >
-                    <div className="absolute left-1/2 size-[18px] top-1/2 translate-x-[-50%] translate-y-[-50%]">
-                      <img alt="Add to planner" className="block max-w-none size-full" src={imgLucideCalendarPlus} />
-                    </div>
+                    <CalendarPlus className="size-[18px] text-white" />
                   </button>
                 )}
               </div>

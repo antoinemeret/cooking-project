@@ -300,7 +300,10 @@ export function filterRecipesAdvanced(
   
   // Apply cooking time filter
   if (filters.maxCookingTime) {
-    filteredRecipes = filteredRecipes.filter(recipe => recipe.time <= filters.maxCookingTime!)
+    filteredRecipes = filteredRecipes.filter(recipe => {
+      const totalTime = (recipe.preparationTime || 0) + (recipe.cookingTime || 0)
+      return totalTime <= filters.maxCookingTime!
+    })
   }
   
   // Apply rating filter
