@@ -3,9 +3,15 @@
 import { useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAssistantStore } from '@/lib/assistant/state'
+import type { AssistantState } from '@/lib/assistant/types'
 
 interface AssistantRouteGuardProps {
   children: React.ReactNode
+}
+
+// Helper function to check if state is completed
+function isCompletedState(state: AssistantState): boolean {
+  return state === 'completed'
 }
 
 export function AssistantRouteGuard({ children }: AssistantRouteGuardProps) {
@@ -16,7 +22,7 @@ export function AssistantRouteGuard({ children }: AssistantRouteGuardProps) {
   // Track if user has made progress
   useEffect(() => {
     // Clear unsaved progress flag when state is completed
-    if (currentState === 'completed') {
+    if (isCompletedState(currentState)) {
       hasUnsavedProgress.current = false
     } else if (constraints || selectedRecipes.length > 0) {
       hasUnsavedProgress.current = true
@@ -26,7 +32,7 @@ export function AssistantRouteGuard({ children }: AssistantRouteGuardProps) {
   // Handle browser back/forward navigation
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (hasUnsavedProgress.current && currentState !== 'completed') {
+      if (hasUnsavedProgress.current) {
         event.preventDefault()
         event.returnValue = 'Vous avez des modifications non sauvegardées. Voulez-vous vraiment quitter ?'
         return event.returnValue
@@ -35,7 +41,7 @@ export function AssistantRouteGuard({ children }: AssistantRouteGuardProps) {
 
     const handlePopState = (event: PopStateEvent) => {
       // If user navigates away from assistant and has unsaved progress
-      if (hasUnsavedProgress.current && currentState !== 'completed') {
+      if (hasUnsavedProgress.current) {
         const shouldLeave = window.confirm(
           'Vous avez des modifications non sauvegardées. Voulez-vous vraiment quitter ?'
         )
@@ -63,7 +69,7 @@ export function AssistantRouteGuard({ children }: AssistantRouteGuardProps) {
 
   // Handle programmatic navigation
   const handleNavigation = (path: string) => {
-    if (hasUnsavedProgress.current && currentState !== 'completed') {
+    if (hasUnsavedProgress.current) {
       const shouldLeave = window.confirm(
         'Vous avez des modifications non sauvegardées. Voulez-vous vraiment quitter ?'
       )
@@ -96,10 +102,11 @@ export function useAssistantNavigation() {
   const { reset, currentState, constraints, selectedRecipes } = useAssistantStore()
 
   // Don't show guard if state is completed (recipes have been saved)
-  const hasUnsavedProgress = currentState !== 'completed' && (constraints || selectedRecipes.length > 0)
+  const isCompleted = isCompletedState(currentState)
+  const hasUnsavedProgress = !isCompleted && (constraints || selectedRecipes.length > 0)
 
   const navigateWithGuard = (path: string) => {
-    if (hasUnsavedProgress && currentState !== 'completed') {
+    if (hasUnsavedProgress) {
       const shouldLeave = window.confirm(
         'Vous avez des modifications non sauvegardées. Voulez-vous vraiment quitter ?'
       )
