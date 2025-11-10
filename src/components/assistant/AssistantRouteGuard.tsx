@@ -15,10 +15,13 @@ export function AssistantRouteGuard({ children }: AssistantRouteGuardProps) {
 
   // Track if user has made progress
   useEffect(() => {
-    if (constraints || selectedRecipes.length > 0) {
+    // Clear unsaved progress flag when state is completed
+    if (currentState === 'completed') {
+      hasUnsavedProgress.current = false
+    } else if (constraints || selectedRecipes.length > 0) {
       hasUnsavedProgress.current = true
     }
-  }, [constraints, selectedRecipes])
+  }, [constraints, selectedRecipes, currentState])
 
   // Handle browser back/forward navigation
   useEffect(() => {
@@ -92,7 +95,8 @@ export function useAssistantNavigation() {
   const router = useRouter()
   const { reset, currentState, constraints, selectedRecipes } = useAssistantStore()
 
-  const hasUnsavedProgress = constraints || selectedRecipes.length > 0
+  // Don't show guard if state is completed (recipes have been saved)
+  const hasUnsavedProgress = currentState !== 'completed' && (constraints || selectedRecipes.length > 0)
 
   const navigateWithGuard = (path: string) => {
     if (hasUnsavedProgress && currentState !== 'completed') {

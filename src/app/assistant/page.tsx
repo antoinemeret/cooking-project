@@ -11,6 +11,7 @@ import { InterpretationSummary } from '@/components/assistant/InterpretationSumm
 import { ConstraintSection } from '@/components/assistant/ConstraintSection'
 import { ConstraintParseResponse, PerMealConstraints, RecipeSuggestion } from '@/lib/assistant/types'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 
 // Placeholder components for each step (to be implemented in later tasks)
 function VoiceRecordingStep() {
@@ -278,6 +279,7 @@ function SuggestionsStep() {
 function ValidationStep() {
   const { reset, constraints, selectedRecipes, removeSelectedRecipe, setState } = useAssistantStore()
   const { navigateWithGuard } = useAssistantNavigation()
+  const router = useRouter()
   const [isValidating, setIsValidating] = useState(false)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
 
@@ -300,41 +302,63 @@ function ValidationStep() {
     
     try {
       // Add all recipes to planner
-      const promises = selectedRecipes.map(async (selection) => {
-        const recipeId = parseInt(selection.recipe.id)
-        if (isNaN(recipeId)) {
-          throw new Error(`Invalid recipe ID: ${selection.recipe.id}`)
-        }
-        
-        const response = await fetch('/api/planner', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            recipeId,
-            userId
-          })
-        })
-        
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}))
-          // Don't fail on 409 (already in planner) - that's okay
-          if (response.status !== 409) {
-            throw new Error(data.error || `Failed to add recipe ${selection.recipe.name} to planner`)
+      const results = await Promise.allSettled(
+        selectedRecipes.map(async (selection) => {
+          const recipeId = parseInt(selection.recipe.id)
+          if (isNaN(recipeId)) {
+            throw new Error(`Invalid recipe ID: ${selection.recipe.id}`)
           }
-        }
-      })
+          
+          console.log(`[ValidationStep] Adding recipe ${recipeId} (${selection.recipe.name}) to planner`)
+          
+          const response = await fetch('/api/planner', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recipeId,
+              userId
+            })
+          })
+          
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}))
+            // Don't fail on 409 (already in planner) - that's okay
+            if (response.status !== 409) {
+              throw new Error(data.error || `Failed to add recipe ${selection.recipe.name} to planner`)
+            } else {
+              console.log(`[ValidationStep] Recipe ${recipeId} already in planner`)
+            }
+          } else {
+            const result = await response.json()
+            console.log(`[ValidationStep] Successfully added recipe ${recipeId}:`, result)
+          }
+        })
+      )
       
-      await Promise.all(promises)
+      // Check if any requests failed (excluding 409 errors which we handle above)
+      const failures = results.filter(
+        result => result.status === 'rejected' && 
+        !(result.reason instanceof Error && result.reason.message.includes('already in planner'))
+      )
       
-      // Reset store and navigate to planner
-      reset()
-      navigateWithGuard('/planner')
+      if (failures.length > 0) {
+        const errorMessages = failures
+          .map(f => f.status === 'rejected' ? f.reason?.message || 'Unknown error' : '')
+          .filter(Boolean)
+        throw new Error(`Failed to add some recipes: ${errorMessages.join(', ')}`)
+      }
+      
+      console.log('[ValidationStep] All recipes added successfully, navigating to planner')
+      
+      // Set state to 'completed' first to prevent navigation guard from showing dialog
+      // This will trigger the CompletedStep component which handles navigation and cleanup
+      setState('completed')
+      
+      // Don't navigate here - let the CompletedStep handle it to avoid race conditions
     } catch (error) {
-      console.error('Error validating selections:', error)
-      // Could show a toast here, but for now just log
-      alert(error instanceof Error ? error.message : 'Erreur lors de l\'ajout des recettes au planning')
-    } finally {
+      console.error('[ValidationStep] Error validating selections:', error)
       setIsValidating(false)
+      alert(error instanceof Error ? error.message : 'Erreur lors de l\'ajout des recettes au planning')
     }
   }
 
@@ -477,17 +501,42 @@ function ErrorStep() {
   )
 }
 
+function CompletedStep() {
+  const router = useRouter()
+  const { reset } = useAssistantStore()
+
+  useEffect(() => {
+    // Navigate immediately when component mounts
+    router.push('/planner')
+    // Reset state after a short delay to ensure navigation happens first
+    const timer = setTimeout(() => {
+      reset()
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [router, reset])
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      <p className="text-muted-foreground">Redirection vers le planning...</p>
+    </div>
+  )
+}
+
 function AssistantPageContent() {
   const currentState = useAssistantState()
   const { reset, interpretation } = useAssistantStore()
   const { navigateWithGuard } = useAssistantNavigation()
 
-  // Reset state only when component unmounts
+  // Reset state only when component unmounts (but not if we're in completed state)
   useEffect(() => {
     return () => {
-      reset()
+      // Don't reset if we're navigating to planner after completion
+      if (currentState !== 'completed') {
+        reset()
+      }
     }
-  }, [reset])
+  }, [reset, currentState])
 
   const handleClose = () => {
     const shouldNavigate = navigateWithGuard('/planner')
@@ -517,9 +566,7 @@ function AssistantPageContent() {
       case 'validating':
         return <ValidationStep />
       case 'completed':
-        // Redirect to planner after completion
-        navigateWithGuard('/planner')
-        return null
+        return <CompletedStep />
       default:
         return <ErrorStep />
     }
