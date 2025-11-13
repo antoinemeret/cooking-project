@@ -18,7 +18,8 @@ export async function generateSummaryWithLLM(instructions: string): Promise<stri
   """
   `
   let output = ''
-  const provider = process.env.LLM_PROVIDER || 'ollama'
+  // Default to anthropic if ANTHROPIC_API_KEY is set, otherwise ollama (for local dev)
+  const provider = process.env.LLM_PROVIDER || (process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'ollama')
   console.log(`🤖 Using LLM provider: ${provider}`)
   
   try {
@@ -183,7 +184,8 @@ export async function processIngredientsWithLLM(rawIngredients: string[]): Promi
   `
 
   let output = ''
-  const provider = process.env.LLM_PROVIDER || 'ollama'
+  // Default to anthropic if ANTHROPIC_API_KEY is set, otherwise ollama (for local dev)
+  const provider = process.env.LLM_PROVIDER || (process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'ollama')
   console.log(`🤖 Using LLM provider: ${provider}`)
   
   try {
