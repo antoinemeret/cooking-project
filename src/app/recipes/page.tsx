@@ -182,12 +182,56 @@ export default function RecipesPage() {
         throw new Error("Upload failed")
       }
 
-      const result = await response.json()
-      if (result.success) {
-        toast.success("Recipe imported successfully!")
-        fetchRecipes() // Refresh the recipes list
-      } else {
-        throw new Error(result.error || "Import failed")
+      // Handle streaming response
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error("No response body")
+      }
+
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n').filter(line => line.trim())
+        
+        for (const line of lines) {
+          try {
+            const eventData = JSON.parse(line)
+            
+            if (eventData.status) {
+              setImportStatus(eventData.status)
+            }
+
+            if (eventData.status === 'done' && eventData.data) {
+              const photoRecipeData = eventData.data
+              
+              // Create the recipe object for the review dialog
+              const photoRecipe = {
+                title: photoRecipeData.title,
+                rawIngredients: photoRecipeData.rawIngredients || [],
+                instructions: photoRecipeData.instructions || '',
+                suggestedTags: photoRecipeData.suggestedTags || [],
+                candidateImages: []
+              }
+              
+              // Open the review dialog instead of directly saving
+              setImportedRecipe(photoRecipe)
+              setIsImportDialogOpen(true)
+              setIsManualMode(false)
+              toast.success("Recipe extracted successfully!")
+            }
+
+            if (eventData.status === 'error') {
+              throw new Error(eventData.error || 'Photo processing failed')
+            }
+          } catch (parseError) {
+            console.error('Error parsing photo import event:', parseError)
+            console.error('Problematic line:', line)
+          }
+        }
       }
     } catch (error) {
       console.error("Photo import error:", error)
@@ -195,14 +239,21 @@ export default function RecipesPage() {
     } finally {
       setIsImporting(false)
       setImportStatus("Add new")
+      // Reset file input
+      if (event.target) {
+        event.target.value = ''
+      }
     }
   }
 
   // Filter recipes based on search term
-  const filteredRecipes = recipes.filter((recipe: any) =>
-    recipe.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    recipe.summary.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredRecipes = recipes.filter((recipe: any) => {
+    if (!searchTerm) return true
+    const searchLower = searchTerm.toLowerCase()
+    const titleMatch = recipe.title?.toLowerCase().includes(searchLower) || false
+    const summaryMatch = recipe.summary?.toLowerCase().includes(searchLower) || false
+    return titleMatch || summaryMatch
+  })
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (containerRef.current?.scrollTop === 0) {

@@ -139,6 +139,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Trigger async workflows (fire and forget - don't await)
+    // Use the request URL to build absolute URLs for internal API calls
+    const baseUrl = req.nextUrl.origin
+    
+    // 1. Generate summary from instructions
+    if (instructions && recipe.id) {
+      fetch(`${baseUrl}/api/recipes/generate-summary`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipeId: recipe.id })
+      }).catch(err => {
+        console.error('Error triggering generate-summary:', err)
+      })
+    }
+
+    // 2. Process ingredients from rawIngredients
+    if (rawIngredients && Array.isArray(rawIngredients) && rawIngredients.length > 0 && recipe.id) {
+      fetch(`${baseUrl}/api/recipes/process-ingredients`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipeId: recipe.id })
+      }).catch(err => {
+        console.error('Error triggering process-ingredients:', err)
+      })
+    }
+
     return NextResponse.json({ 
       recipe,
       imageDownloadStatus,

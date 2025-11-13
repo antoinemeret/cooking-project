@@ -10,10 +10,24 @@ export async function GET(req: NextRequest) {
     })
     
     // Parse rawIngredients JSON string for each recipe
-    const recipesWithParsedIngredients = recipes.map(recipe => ({
-      ...recipe,
-      ingredients: recipe.rawIngredients ? JSON.parse(recipe.rawIngredients) : []
-    }))
+    // Note: We overwrite ingredients with parsed rawIngredients for backwards compatibility
+    // with RecipeSheet which expects ingredients to be string[] (not Ingredient[] objects)
+    const recipesWithParsedIngredients = recipes.map(recipe => {
+      let parsedRawIngredients: string[] = []
+      try {
+        parsedRawIngredients = recipe.rawIngredients ? JSON.parse(recipe.rawIngredients) : []
+      } catch (err) {
+        console.error(`Error parsing rawIngredients for recipe ${recipe.id}:`, err)
+        parsedRawIngredients = []
+      }
+      
+      return {
+        ...recipe,
+        // Overwrite ingredients with parsed rawIngredients for backwards compatibility
+        // The actual Ingredient[] relation is still available but not in the response
+        ingredients: parsedRawIngredients
+      }
+    })
     
     return NextResponse.json({ recipes: recipesWithParsedIngredients })
   } catch (err) {
