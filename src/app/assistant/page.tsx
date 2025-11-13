@@ -392,7 +392,15 @@ function ValidationStep() {
             
             // Don't fail on 409 (already in planner) - that's okay
             if (response.status !== 409) {
-              throw new Error(data.error || `Failed to add recipe ${selection.recipe.name} to planner (status: ${response.status})`)
+              const errorMsg = data.error || `Failed to add recipe ${selection.recipe.name} to planner (status: ${response.status})`
+              const detailsMsg = data.details ? ` Details: ${data.details}` : ''
+              console.error(`[ValidationStep] Failed to add recipe ${recipeId}:`, {
+                status: response.status,
+                error: errorMsg,
+                details: data.details,
+                fullData: data
+              })
+              throw new Error(`${errorMsg}${detailsMsg}`)
             } else {
               console.log(`[ValidationStep] Recipe ${recipeId} already in planner (409)`)
               return { success: true, alreadyExists: true, recipeId }
