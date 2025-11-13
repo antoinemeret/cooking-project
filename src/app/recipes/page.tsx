@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, ChangeEvent } from 'react'
+import { useState, useEffect, useRef, ChangeEvent, useMemo } from 'react'
 import { RecipeCard } from '@/components/recipes/RecipeCard'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -34,13 +34,33 @@ export default function RecipesPage() {
   const [isVideoProcessing, setIsVideoProcessing] = useState(false)
   const [videoProgress, setVideoProgress] = useState<any>(null)
   const photoInputRef = useRef<HTMLInputElement>(null)
+  const photoImportToastIdRef = useRef<string | number | undefined>(undefined)
 
   async function fetchRecipes() {
     setLoading(true)
-    const res = await fetch('/api/recipes/list')
-    const data = await res.json()
-    setRecipes(data.recipes)
-    setLoading(false)
+    try {
+      const res = await fetch('/api/recipes/list')
+      if (!res.ok) {
+        console.error('Failed to fetch recipes:', res.status, res.statusText)
+        toast.error('Failed to load recipes')
+        setLoading(false)
+        return
+      }
+      const data = await res.json()
+      console.log('Fetched recipes:', data.recipes?.length || 0, 'recipes')
+      console.log('Recipe IDs:', data.recipes?.map((r: any) => r.id) || [])
+      if (data.recipes && Array.isArray(data.recipes)) {
+        setRecipes(data.recipes)
+      } else {
+        console.error('Invalid recipes data:', data)
+        toast.error('Invalid recipe data received')
+      }
+    } catch (error) {
+      console.error('Error fetching recipes:', error)
+      toast.error('Failed to load recipes')
+    } finally {
+      setLoading(false)
+    }
   }
 
   function handleRefresh() {
@@ -167,8 +187,28 @@ export default function RecipesPage() {
     const file = event.target.files?.[0]
     if (!file) return
 
+    // Prevent multiple uploads
+    if (isImporting) {
+      toast.warning("Photo import already in progress. Please wait...")
+      return
+    }
+
+    // Prevent multiple uploads
     setIsImporting(true)
     setImportStatus("Uploading...")
+    
+    // Show initial loading toast immediately
+    const toastId = toast.loading("Uploading photo...", {
+      description: "Preparing your image for processing",
+      duration: Infinity // Keep it visible until we dismiss it
+    })
+    
+    photoImportToastIdRef.current = toastId
+    console.log('📸 Photo import started, toast ID:', toastId)
+    
+    // Wait for next tick to ensure toast is rendered
+    await new Promise(resolve => setTimeout(resolve, 50))
+    
     const formData = new FormData()
     formData.append("file", file)
 
@@ -203,10 +243,50 @@ export default function RecipesPage() {
             
             if (eventData.status) {
               setImportStatus(eventData.status)
+              
+              console.log('📸 Status update:', eventData.status)
+              
+              // Update toast with progress - ensure toastId is defined
+              const currentToastId = photoImportToastIdRef.current
+              if (currentToastId) {
+                if (eventData.status === 'Analyzing recipe image...') {
+                  toast.loading("Analyzing recipe image...", {
+                    id: currentToastId,
+                    description: "Using AI to extract recipe information from your photo",
+                    duration: Infinity
+                  })
+                } else if (eventData.status === 'Processing extracted data...') {
+                  toast.loading("Processing extracted data...", {
+                    id: currentToastId,
+                    description: "Structuring the recipe information",
+                    duration: Infinity
+                  })
+                } else if (eventData.status === 'Repairing data format...') {
+                  toast.loading("Repairing data format...", {
+                    id: currentToastId,
+                    description: "Fixing any formatting issues",
+                    duration: Infinity
+                  })
+                } else if (eventData.status && eventData.status !== 'done' && eventData.status !== 'error') {
+                  // Update toast for any other status messages
+                  toast.loading(eventData.status, {
+                    id: currentToastId,
+                    description: "Processing your photo...",
+                    duration: Infinity
+                  })
+                }
+              }
             }
 
             if (eventData.status === 'done' && eventData.data) {
               const photoRecipeData = eventData.data
+              
+              // Dismiss loading toast if it exists
+              const currentToastId = photoImportToastIdRef.current
+              if (currentToastId) {
+                toast.dismiss(currentToastId)
+                photoImportToastIdRef.current = undefined
+              }
               
               // Create the recipe object for the review dialog
               const photoRecipe = {
@@ -221,10 +301,21 @@ export default function RecipesPage() {
               setImportedRecipe(photoRecipe)
               setIsImportDialogOpen(true)
               setIsManualMode(false)
-              toast.success("Recipe extracted successfully!")
+              
+              // Small delay before showing success to ensure loading toast is dismissed
+              setTimeout(() => {
+                toast.success("Recipe extracted successfully!", {
+                  description: "Review and edit the details before saving"
+                })
+              }, 100)
             }
 
             if (eventData.status === 'error') {
+              const currentToastId = photoImportToastIdRef.current
+              if (currentToastId) {
+                toast.dismiss(currentToastId)
+                photoImportToastIdRef.current = undefined
+              }
               throw new Error(eventData.error || 'Photo processing failed')
             }
           } catch (parseError) {
@@ -235,7 +326,14 @@ export default function RecipesPage() {
       }
     } catch (error) {
       console.error("Photo import error:", error)
-      toast.error("Failed to import recipe from photo")
+      // Dismiss loading toast if it exists
+      if (photoImportToastIdRef.current) {
+        toast.dismiss(photoImportToastIdRef.current)
+        photoImportToastIdRef.current = undefined
+      }
+      toast.error("Failed to import recipe from photo", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred"
+      })
     } finally {
       setIsImporting(false)
       setImportStatus("Add new")
@@ -247,13 +345,31 @@ export default function RecipesPage() {
   }
 
   // Filter recipes based on search term
-  const filteredRecipes = recipes.filter((recipe: any) => {
-    if (!searchTerm) return true
+  const filteredRecipes = useMemo(() => {
+    if (!searchTerm) return recipes
     const searchLower = searchTerm.toLowerCase()
-    const titleMatch = recipe.title?.toLowerCase().includes(searchLower) || false
-    const summaryMatch = recipe.summary?.toLowerCase().includes(searchLower) || false
-    return titleMatch || summaryMatch
-  })
+    return recipes.filter((recipe: any) => {
+      const titleMatch = recipe.title?.toLowerCase().includes(searchLower) || false
+      const summaryMatch = recipe.summary?.toLowerCase().includes(searchLower) || false
+      return titleMatch || summaryMatch
+    })
+  }, [recipes, searchTerm])
+
+  // Debug logging
+  useEffect(() => {
+    if (recipes.length > 0) {
+      console.log('Recipes state:', recipes.length, 'recipes')
+      console.log('Filtered recipes:', filteredRecipes.length, 'recipes')
+      console.log('All recipe IDs in state:', recipes.map((r: any) => r.id))
+      console.log('Filtered recipe IDs:', filteredRecipes.map((r: any) => r.id))
+      if (recipes.length !== filteredRecipes.length) {
+        const missingIds = recipes
+          .filter((r: any) => !filteredRecipes.find((fr: any) => fr.id === r.id))
+          .map((r: any) => r.id)
+        console.warn('Recipes filtered out:', missingIds)
+      }
+    }
+  }, [recipes, filteredRecipes, searchTerm])
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (containerRef.current?.scrollTop === 0) {

@@ -4,12 +4,21 @@ import { addTagToCanonicalList } from '@/lib/tag-utils'
 import sharp from 'sharp'
 import { uploadToBlob } from '@/lib/blob'
 import * as Sentry from '@sentry/nextjs'
+import { generateAndSaveSummary, processAndSaveIngredients } from '@/lib/recipe-processing'
 
 export async function POST(req: NextRequest) {
   let body: any = null
   try {
     body = await req.json()
     const { title, rawIngredients, instructions, tags, selectedImageUrl } = body
+    
+    console.log('📥 POST /api/recipes called with:', {
+      title,
+      rawIngredientsCount: rawIngredients?.length || 0,
+      instructionsLength: instructions?.length || 0,
+      hasTags: !!tags,
+      hasSelectedImage: !!selectedImageUrl
+    })
 
     if (!title || !Array.isArray(rawIngredients) || !instructions) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
@@ -30,6 +39,13 @@ export async function POST(req: NextRequest) {
         // Do not connect ingredients here
       },
       include: { ingredients: true }
+    })
+    
+    console.log(`✅ Recipe created with ID ${recipe.id}:`, {
+      hasInstructions: !!instructions && instructions.length > 0,
+      hasRawIngredients: Array.isArray(rawIngredients) && rawIngredients.length > 0,
+      instructionsLength: instructions?.length || 0,
+      rawIngredientsCount: rawIngredients?.length || 0
     })
 
     // Track image download status for user feedback
@@ -139,30 +155,71 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Trigger async workflows (fire and forget - don't await)
-    // Use the request URL to build absolute URLs for internal API calls
-    const baseUrl = req.nextUrl.origin
+    // Trigger async workflows (fire and forget - don't await to avoid blocking response)
+    // Call functions directly instead of via HTTP for better reliability in serverless
+    // In serverless, we need to ensure these start before the response is sent
+    const workflowPromises: Promise<any>[] = []
     
-    // 1. Generate summary from instructions
-    if (instructions && recipe.id) {
-      fetch(`${baseUrl}/api/recipes/generate-summary`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipeId: recipe.id })
-      }).catch(err => {
-        console.error('Error triggering generate-summary:', err)
-      })
+    console.log(`🔍 Checking conditions for async workflows (recipe ${recipe.id}):`, {
+      hasInstructions: !!instructions && instructions.trim().length > 0,
+      instructionsLength: instructions?.trim().length || 0,
+      hasRawIngredients: Array.isArray(rawIngredients) && rawIngredients.length > 0,
+      rawIngredientsCount: rawIngredients?.length || 0,
+      recipeId: recipe.id
+    })
+    
+    if (instructions && instructions.trim().length > 0 && recipe.id) {
+      console.log(`🔄 Triggering summary generation for recipe ${recipe.id}`)
+      const summaryPromise = generateAndSaveSummary(recipe.id)
+        .then(() => {
+          console.log(`✅ Summary generation completed for recipe ${recipe.id}`)
+        })
+        .catch(err => {
+          console.error(`❌ Error generating summary for recipe ${recipe.id}:`, err)
+          Sentry.captureException(err, {
+            tags: { api: 'recipes-create', workflow: 'generate-summary' },
+            extra: { recipeId: recipe.id }
+          })
+        })
+      workflowPromises.push(summaryPromise)
+      console.log(`✓ Summary workflow promise added for recipe ${recipe.id}`)
+    } else {
+      console.log(`⚠️ Skipping summary generation for recipe ${recipe.id}: instructions=${!!instructions}, instructionsLength=${instructions?.trim().length || 0}, id=${!!recipe.id}`)
     }
 
-    // 2. Process ingredients from rawIngredients
     if (rawIngredients && Array.isArray(rawIngredients) && rawIngredients.length > 0 && recipe.id) {
-      fetch(`${baseUrl}/api/recipes/process-ingredients`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipeId: recipe.id })
-      }).catch(err => {
-        console.error('Error triggering process-ingredients:', err)
-      })
+      console.log(`🔄 Triggering ingredient processing for recipe ${recipe.id} with ${rawIngredients.length} ingredients`)
+      const ingredientsPromise = processAndSaveIngredients(recipe.id)
+        .then(() => {
+          console.log(`✅ Ingredient processing completed for recipe ${recipe.id}`)
+        })
+        .catch(err => {
+          console.error(`❌ Error processing ingredients for recipe ${recipe.id}:`, err)
+          Sentry.captureException(err, {
+            tags: { api: 'recipes-create', workflow: 'process-ingredients' },
+            extra: { recipeId: recipe.id }
+          })
+        })
+      workflowPromises.push(ingredientsPromise)
+      console.log(`✓ Ingredient workflow promise added for recipe ${recipe.id}`)
+    } else {
+      console.log(`⚠️ Skipping ingredient processing for recipe ${recipe.id}: rawIngredients=${!!rawIngredients}, isArray=${Array.isArray(rawIngredients)}, length=${rawIngredients?.length || 0}, id=${!!recipe.id}`)
+    }
+
+    console.log(`📊 Total workflow promises: ${workflowPromises.length} for recipe ${recipe.id}`)
+
+    // Wait a short time to ensure async workflows start before returning
+    // This helps ensure they run in serverless environments
+    if (workflowPromises.length > 0) {
+      console.log(`⏳ Waiting for workflows to start for recipe ${recipe.id}...`)
+      // Wait for at least one async operation to start (but don't await completion)
+      await Promise.race([
+        Promise.all(workflowPromises.map(p => p.catch(() => {}))), // Wait for all, but catch errors
+        new Promise(resolve => setTimeout(resolve, 200)) // Increased to 200ms to give more time
+      ])
+      console.log(`✓ Async workflows started for recipe ${recipe.id}, returning response...`)
+    } else {
+      console.log(`⚠️ No workflows to trigger for recipe ${recipe.id}`)
     }
 
     return NextResponse.json({ 

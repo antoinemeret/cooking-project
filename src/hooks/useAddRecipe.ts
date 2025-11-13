@@ -49,8 +49,26 @@ export function useAddRecipe() {
     }
     console.log('📸 File selected:', file.name, file.type, file.size)
 
+    // Prevent multiple uploads
+    if (isImporting) {
+      toast.warning("Photo import already in progress. Please wait...")
+      return
+    }
+
     setIsImporting(true)
     setImportStatus("Uploading...")
+    
+    // Show initial loading toast immediately
+    const toastId = toast.loading("Uploading photo...", {
+      description: "Preparing your image for processing",
+      duration: Infinity // Keep it visible until we dismiss it
+    })
+    
+    console.log('📸 Photo import started, toast ID:', toastId)
+    
+    // Small delay to ensure toast is rendered
+    await new Promise(resolve => setTimeout(resolve, 50))
+    
     const formData = new FormData()
     formData.append("file", file)
 
@@ -80,11 +98,44 @@ export function useAddRecipe() {
             
             if (eventData.status) {
               setImportStatus(eventData.status)
+              
+              console.log('📸 Status update:', eventData.status)
+              
+              // Update toast with progress
+              if (eventData.status === 'Analyzing recipe image...') {
+                toast.loading("Analyzing recipe image...", {
+                  id: toastId,
+                  description: "Using AI to extract recipe information from your photo",
+                  duration: Infinity
+                })
+              } else if (eventData.status === 'Processing extracted data...') {
+                toast.loading("Processing extracted data...", {
+                  id: toastId,
+                  description: "Structuring the recipe information",
+                  duration: Infinity
+                })
+              } else if (eventData.status === 'Repairing data format...') {
+                toast.loading("Repairing data format...", {
+                  id: toastId,
+                  description: "Fixing any formatting issues",
+                  duration: Infinity
+                })
+              } else if (eventData.status && eventData.status !== 'done' && eventData.status !== 'error') {
+                // Update toast for any other status messages
+                toast.loading(eventData.status, {
+                  id: toastId,
+                  description: "Processing your photo...",
+                  duration: Infinity
+                })
+              }
             }
 
             if (eventData.status === 'done' && eventData.data) {
               const photoRecipeData = eventData.data
               console.log('📸 Photo import response data (mobile):', photoRecipeData)
+              
+              // Dismiss loading toast
+              toast.dismiss(toastId)
               
               // Create the recipe object for the review dialog
               const photoRecipe = {
@@ -99,10 +150,17 @@ export function useAddRecipe() {
               setImportedRecipe(photoRecipe)
               setIsImportDialogOpen(true)
               setIsManualMode(false)
-              toast.success("Recipe extracted successfully!")
+              
+              // Small delay before showing success to ensure loading toast is dismissed
+              setTimeout(() => {
+                toast.success("Recipe extracted successfully!", {
+                  description: "Review and edit the details before saving"
+                })
+              }, 100)
             }
 
             if (eventData.status === 'error') {
+              toast.dismiss(toastId)
               throw new Error(eventData.error || 'Photo processing failed')
             }
           } catch (parseError) {
@@ -113,10 +171,17 @@ export function useAddRecipe() {
       }
     } catch (error) {
       console.error("Photo import error (mobile):", error)
-      toast.error("Failed to import recipe from photo")
+      toast.dismiss(toastId)
+      toast.error("Failed to import recipe from photo", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred"
+      })
     } finally {
       setIsImporting(false)
       setImportStatus("Add new")
+      // Reset file input
+      if (event.target) {
+        event.target.value = ''
+      }
     }
   }
 

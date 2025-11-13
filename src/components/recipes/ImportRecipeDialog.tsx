@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { VideoProgressTracker, VideoProcessingProgress } from '@/components/recipes/VideoProgressTracker'
 import { TagInput } from '@/components/ui/tag-input'
 import { CheckCircle2, Upload } from 'lucide-react'
+import { toast } from 'sonner'
 
 type ImportedRecipe = {
   id?: number
@@ -67,6 +68,7 @@ export function ImportRecipeDialog({
   const [ingredients, setIngredients] = useState((recipe?.rawIngredients || []).join('\n'))
   const [instructions, setInstructions] = useState(recipe?.instructions || '')
   const [tags, setTags] = useState<string[]>(recipe?.tags || [])
+  const [isSaving, setIsSaving] = useState(false)
   // Image picker state
   const [candidateImages, setCandidateImages] = useState<string[]>([])
   const [selectedImageIdx, setSelectedImageIdx] = useState(0)
@@ -127,9 +129,26 @@ export function ImportRecipeDialog({
   // Define handleSave with backend call
   async function handleSave() {
     if (!title.trim() || !ingredients.trim() || !instructions.trim()) {
-      alert('Please fill in all fields')
+      toast.error('Please fill in all fields', {
+        description: 'Title, ingredients, and instructions are required'
+      })
       return
     }
+
+    // Prevent multiple saves
+    if (isSaving) {
+      toast.warning('Saving in progress', {
+        description: 'Please wait while we save your recipe...'
+      })
+      return
+    }
+
+    setIsSaving(true)
+    
+    // Show initial loading toast
+    const toastId = toast.loading('Saving recipe...', {
+      description: 'Creating your recipe in the database'
+    })
 
     try {
       // Prepare recipe data for backend
@@ -142,7 +161,21 @@ export function ImportRecipeDialog({
         selectedImageUrl: candidateImages[selectedImageIdx] || null
       }
 
+      // Update toast - saving recipe
+      toast.loading('Saving recipe...', {
+        id: toastId,
+        description: 'Saving recipe details to database'
+      })
+
       // Call existing backend endpoint
+      console.log('💾 Calling /api/recipes with data:', {
+        title: recipeData.title,
+        rawIngredientsCount: recipeData.rawIngredients.length,
+        instructionsLength: recipeData.instructions.length,
+        hasTags: !!recipeData.tags,
+        hasSelectedImage: !!recipeData.selectedImageUrl
+      })
+      
       const response = await fetch('/api/recipes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -151,11 +184,30 @@ export function ImportRecipeDialog({
 
       if (!response.ok) {
         const errorData = await response.json()
+        console.error('❌ Recipe save failed:', errorData)
         throw new Error(errorData.error || 'Failed to save recipe')
       }
 
       const responseData = await response.json()
       const { recipe: savedRecipe, imageDownloadStatus, imageDownloadMessage } = responseData
+      
+      console.log('✅ Recipe saved successfully:', {
+        id: savedRecipe.id,
+        title: savedRecipe.title,
+        imageDownloadStatus,
+        hasInstructions: !!savedRecipe.instructions,
+        hasRawIngredients: !!savedRecipe.rawIngredients
+      })
+      
+      console.log('🔄 Async workflows should be triggered for recipe', savedRecipe.id)
+
+      // Update toast - processing image if needed
+      if (uploadedImage || (imageDownloadStatus === 'success' || imageDownloadStatus === 'failed')) {
+        toast.loading('Processing image...', {
+          id: toastId,
+          description: 'Uploading and optimizing recipe image'
+        })
+      }
 
       // --- Handle user-uploaded image separately ---
       if (uploadedImage) {
@@ -177,14 +229,31 @@ export function ImportRecipeDialog({
       }
       // Note: Candidate image URL is handled by the /api/recipes endpoint directly
 
-      // Show user-friendly message about image download status
+      // Update toast - finalizing
+      toast.loading('Finalizing...', {
+        id: toastId,
+        description: 'Running background tasks (summary, ingredients)'
+      })
+
+      // Small delay to allow async workflows to start
+      await new Promise(resolve => setTimeout(resolve, 500))
+
+      // Dismiss loading toast and show success
+      toast.dismiss(toastId)
+      
+      // Show success message
       if (imageDownloadStatus === 'success') {
-        console.log('✅ Image downloaded successfully')
+        toast.success('Recipe saved successfully!', {
+          description: `"${savedRecipe.title}" has been added to your collection`
+        })
       } else if (imageDownloadStatus === 'failed' && imageDownloadMessage) {
-        // Show a non-blocking notification about image download failure
-        setTimeout(() => {
-          alert(`Recipe saved successfully!\n\n⚠️ ${imageDownloadMessage}`)
-        }, 100)
+        toast.success('Recipe saved successfully!', {
+          description: `${savedRecipe.title} saved. Note: ${imageDownloadMessage}`
+        })
+      } else {
+        toast.success('Recipe saved successfully!', {
+          description: `"${savedRecipe.title}" has been added to your collection. Background tasks are running...`
+        })
       }
 
       // Close dialog and refresh recipe list
@@ -193,7 +262,12 @@ export function ImportRecipeDialog({
 
     } catch (error) {
       console.error('Error saving recipe:', error)
-      alert(`Failed to save recipe: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      toast.dismiss(toastId)
+      toast.error('Failed to save recipe', {
+        description: error instanceof Error ? error.message : 'Unknown error occurred'
+      })
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -350,7 +424,9 @@ export function ImportRecipeDialog({
         </div>
         
         <div className="flex-shrink-0 pt-6 pb-2">
-          <Button onClick={handleSave} className="w-full">Save</Button>
+          <Button onClick={handleSave} className="w-full" disabled={isSaving}>
+            {isSaving ? 'Saving...' : 'Save'}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
