@@ -356,34 +356,63 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
     console.log(`🥕 Extracted ${cleanIngredients.length} clean ingredients: ${cleanIngredients.join(', ')}`)
 
     // Ensure all ingredients exist first (create if they don't)
-    // Use upsert to handle race conditions where multiple requests try to create the same ingredient
+    // Use upsert with retry logic to handle race conditions
     const dbStartTime = Date.now()
     const ingredientIds: number[] = []
+    const failedIngredients: string[] = []
+    
     for (const name of cleanIngredients) {
-      try {
-        // Use upsert to atomically create or get existing ingredient
-        const ingredient = await prisma.ingredient.upsert({
-          where: { name },
-          update: {}, // No update needed if exists
-          create: { name, startSeason: 1, endSeason: 12 }
-        })
-        ingredientIds.push(ingredient.id)
-      } catch (error: any) {
-        // If upsert fails (e.g., race condition), try to find existing
-        console.warn(`⚠️ Upsert failed for ingredient "${name}", trying to find existing:`, error)
+      let ingredient: { id: number } | null = null
+      let retries = 3
+      
+      while (retries > 0 && !ingredient) {
         try {
-          const existing = await prisma.ingredient.findUnique({
+          // First, try to find existing
+          ingredient = await prisma.ingredient.findUnique({
             where: { name }
           })
-          if (existing) {
-            ingredientIds.push(existing.id)
-          } else {
-            console.error(`❌ Could not find or create ingredient "${name}"`)
+          
+          // If not found, try to create with error handling for race conditions
+          if (!ingredient) {
+            try {
+              ingredient = await prisma.ingredient.create({
+                data: { name, startSeason: 1, endSeason: 12 }
+              })
+            } catch (createError: any) {
+              // If create fails (race condition), try to find again
+              if (createError.code === 'P2002' || createError.message?.includes('Unique constraint')) {
+                console.log(`🔄 Race condition detected for ingredient "${name}", retrying find...`)
+                await new Promise(resolve => setTimeout(resolve, 50)) // Small delay before retry
+                ingredient = await prisma.ingredient.findUnique({
+                  where: { name }
+                })
+              } else {
+                throw createError
+              }
+            }
           }
-        } catch (findError) {
-          console.error(`❌ Error finding ingredient "${name}" after upsert failed:`, findError)
+          
+          if (ingredient) {
+            ingredientIds.push(ingredient.id)
+            break // Success, exit retry loop
+          }
+        } catch (error: any) {
+          console.warn(`⚠️ Error processing ingredient "${name}" (${retries} retries left):`, error)
+          retries--
+          if (retries > 0) {
+            await new Promise(resolve => setTimeout(resolve, 100)) // Wait before retry
+          }
         }
       }
+      
+      if (!ingredient) {
+        console.error(`❌ Failed to find or create ingredient "${name}" after retries`)
+        failedIngredients.push(name)
+      }
+    }
+    
+    if (failedIngredients.length > 0) {
+      console.warn(`⚠️ ${failedIngredients.length} ingredients could not be processed: ${failedIngredients.join(', ')}`)
     }
 
     // Update recipe: disconnect all, then connect to new ones
