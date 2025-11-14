@@ -356,20 +356,34 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
     console.log(`🥕 Extracted ${cleanIngredients.length} clean ingredients: ${cleanIngredients.join(', ')}`)
 
     // Ensure all ingredients exist first (create if they don't)
+    // Use upsert to handle race conditions where multiple requests try to create the same ingredient
     const dbStartTime = Date.now()
     const ingredientIds: number[] = []
     for (const name of cleanIngredients) {
-      let ingredient = await prisma.ingredient.findUnique({
-        where: { name }
-      })
-      
-      if (!ingredient) {
-        ingredient = await prisma.ingredient.create({
-          data: { name, startSeason: 1, endSeason: 12 }
+      try {
+        // Use upsert to atomically create or get existing ingredient
+        const ingredient = await prisma.ingredient.upsert({
+          where: { name },
+          update: {}, // No update needed if exists
+          create: { name, startSeason: 1, endSeason: 12 }
         })
+        ingredientIds.push(ingredient.id)
+      } catch (error: any) {
+        // If upsert fails (e.g., race condition), try to find existing
+        console.warn(`⚠️ Upsert failed for ingredient "${name}", trying to find existing:`, error)
+        try {
+          const existing = await prisma.ingredient.findUnique({
+            where: { name }
+          })
+          if (existing) {
+            ingredientIds.push(existing.id)
+          } else {
+            console.error(`❌ Could not find or create ingredient "${name}"`)
+          }
+        } catch (findError) {
+          console.error(`❌ Error finding ingredient "${name}" after upsert failed:`, findError)
+        }
       }
-      
-      ingredientIds.push(ingredient.id)
     }
 
     // Update recipe: disconnect all, then connect to new ones
