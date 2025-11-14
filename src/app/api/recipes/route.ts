@@ -208,26 +208,32 @@ export async function POST(req: NextRequest) {
 
     console.log(`📊 Total workflow promises: ${workflowPromises.length} for recipe ${recipe.id}`)
 
-    // In serverless, we need to give the workflows time to at least start
-    // Vercel serverless functions can continue running for a short time after response
-    // But we should wait a bit to ensure the LLM API calls are initiated
+    // In serverless, we need to wait for workflows to complete
+    // Vercel serverless functions can continue running after response, but it's unreliable
+    // Best to wait for completion to ensure data is saved
     if (workflowPromises.length > 0) {
-      console.log(`⏳ Waiting for workflows to start for recipe ${recipe.id}...`)
+      console.log(`⏳ Waiting for workflows to complete for recipe ${recipe.id}...`)
       const workflowStartTime = Date.now()
       
-      // Wait a bit longer (500ms) to ensure LLM API calls are initiated
-      // Note: We can't wait for full completion as that would timeout the API route
-      await Promise.race([
-        Promise.all(workflowPromises.map(p => p.catch((err) => {
-          console.error(`⚠️ Workflow promise error (non-fatal):`, err)
-          return null
-        }))), // Wait for all, but catch errors to prevent rejection
-        new Promise(resolve => setTimeout(resolve, 500)) // 500ms to give LLM calls time to start
-      ])
-      
-      const waitTime = Date.now() - workflowStartTime
-      console.log(`✓ Async workflows started for recipe ${recipe.id} (waited ${waitTime}ms), returning response...`)
-      console.log(`⚠️ Workflows will continue in background after response is sent`)
+      try {
+        // Wait up to 10 seconds for workflows to complete
+        // This ensures they finish before function terminates
+        await Promise.race([
+          Promise.all(workflowPromises.map(p => p.catch((err) => {
+            console.error(`⚠️ Workflow promise error (non-fatal):`, err)
+            return null
+          }))), // Wait for all, but catch errors to prevent rejection
+          new Promise(resolve => setTimeout(resolve, 10000)) // 10s max wait
+        ])
+        
+        const waitTime = Date.now() - workflowStartTime
+        console.log(`✓ Async workflows completed for recipe ${recipe.id} (took ${waitTime}ms), returning response...`)
+      } catch (error) {
+        const waitTime = Date.now() - workflowStartTime
+        console.error(`⚠️ Workflow wait timed out after ${waitTime}ms for recipe ${recipe.id}, returning response anyway`)
+        console.error(`Error:`, error)
+        // Don't throw - return response anyway so user isn't blocked
+      }
     } else {
       console.log(`⚠️ No workflows to trigger for recipe ${recipe.id}`)
     }
