@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/drawer'
 import { TimeDisplay } from '@/components/recipes/TimeDisplay'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { isValidImageUrl } from '@/lib/utils'
 import type { RecipeSuggestion } from '@/lib/assistant/types'
 
 interface Recipe {
@@ -151,7 +152,7 @@ export function RecipePreviewDrawer ({
           ) : recipe ? (
             <div className="space-y-6">
               {/* Recipe Image */}
-              {recipe.image && (
+              {recipe.image && isValidImageUrl(recipe.image) && (
                 <div className="relative w-full h-[200px] rounded-lg overflow-hidden bg-muted">
                   {!imageError ? (
                     <Image

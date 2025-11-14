@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Image from 'next/image'
 import { Eye, CalendarPlus } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, isValidImageUrl } from '@/lib/utils'
 import { TimeDisplay } from '@/components/recipes/TimeDisplay'
 import type { RecipeSuggestion } from '@/lib/assistant/types'
 
@@ -42,7 +42,7 @@ export function RecipeAssistantCard ({
       
       {/* Hero Picture */}
       <div className="aspect-[329/219.333] bg-white overflow-clip relative rounded-[8px] shrink-0 w-full">
-        {recipe.imageUrl && !imageError ? (
+        {recipe.imageUrl && isValidImageUrl(recipe.imageUrl) && !imageError ? (
           <Image
             src={recipe.imageUrl}
             alt={recipe.name}

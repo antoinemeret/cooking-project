@@ -11,7 +11,7 @@ import {
   DrawerTrigger,
 } from '@/components/ui/drawer'
 import { SquarePen, Heart, CalendarPlus, Trash2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, isValidImageUrl } from '@/lib/utils'
 
 interface Recipe {
   id: number
@@ -76,7 +76,7 @@ export function RecipeActionsDrawer({
         <div className="px-7 pt-6 pb-0">
           <div className="flex gap-2 items-center">
             <div className="relative w-12 h-12 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-              {recipe.image && !imageError ? (
+              {recipe.image && isValidImageUrl(recipe.image) && !imageError ? (
                 <Image
                   src={recipe.image}
                   alt={recipe.title}

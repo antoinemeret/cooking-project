@@ -24,3 +24,50 @@ export function validateImageFile(file: File): { valid: boolean, error?: string 
   }
   return { valid: true }
 }
+
+/**
+ * Validates if a URL is safe for Next.js Image optimization
+ * Checks if it's a valid absolute URL and matches allowed patterns
+ */
+export function isValidImageUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string' || url.trim() === '') {
+    return false
+  }
+  
+  // Check if it's a valid URL
+  try {
+    const urlObj = new URL(url)
+    
+    // Allow localhost for development
+    if (urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1') {
+      return true
+    }
+    
+    // Allow Vercel Blob storage
+    if (urlObj.hostname.includes('public.blob.vercel-storage.com')) {
+      return true
+    }
+    
+    // Allow GitHub raw content
+    if (urlObj.hostname === 'raw.githubusercontent.com') {
+      return true
+    }
+    
+    // For relative paths starting with /, they're safe (local assets)
+    if (url.startsWith('/')) {
+      return true
+    }
+    
+    // Reject other external URLs that aren't configured
+    return false
+  } catch {
+    // If URL parsing fails, it might be a relative path
+    // Relative paths starting with / are safe
+    if (url.startsWith('/')) {
+      return true
+    }
+    
+    // Otherwise it's invalid
+    return false
+  }
+}

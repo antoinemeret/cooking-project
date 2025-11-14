@@ -8,7 +8,7 @@ import { TimeDisplay } from './TimeDisplay'
 import { RecipeActionsDrawer } from './RecipeActionsDrawer'
 import { RecipeSheet } from './RecipeSheet'
 import { RecipeSheetDesktop } from './RecipeSheetDesktop'
-import { cn } from '@/lib/utils'
+import { cn, isValidImageUrl } from '@/lib/utils'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -84,7 +84,7 @@ export function RecipeCard({
           onClick={() => handleOpenSheet()}
           className="relative w-full h-[180px] rounded-lg overflow-hidden bg-muted"
         >
-          {recipe.image && !imageError ? (
+          {recipe.image && isValidImageUrl(recipe.image) && !imageError ? (
             <Image
               src={recipe.image}
               alt={recipe.title}
@@ -168,7 +168,7 @@ export function RecipeCard({
             onClick={() => handleOpenSheet()}
             className="relative w-40 h-40 rounded-2xl overflow-hidden bg-muted hover:opacity-90 transition-opacity"
           >
-            {recipe.image && !imageError ? (
+            {recipe.image && isValidImageUrl(recipe.image) && !imageError ? (
               <Image
                 src={recipe.image}
                 alt={recipe.title}
