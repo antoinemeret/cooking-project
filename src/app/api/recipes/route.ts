@@ -208,16 +208,26 @@ export async function POST(req: NextRequest) {
 
     console.log(`📊 Total workflow promises: ${workflowPromises.length} for recipe ${recipe.id}`)
 
-    // Wait a short time to ensure async workflows start before returning
-    // This helps ensure they run in serverless environments
+    // In serverless, we need to give the workflows time to at least start
+    // Vercel serverless functions can continue running for a short time after response
+    // But we should wait a bit to ensure the LLM API calls are initiated
     if (workflowPromises.length > 0) {
       console.log(`⏳ Waiting for workflows to start for recipe ${recipe.id}...`)
-      // Wait for at least one async operation to start (but don't await completion)
+      const workflowStartTime = Date.now()
+      
+      // Wait a bit longer (500ms) to ensure LLM API calls are initiated
+      // Note: We can't wait for full completion as that would timeout the API route
       await Promise.race([
-        Promise.all(workflowPromises.map(p => p.catch(() => {}))), // Wait for all, but catch errors
-        new Promise(resolve => setTimeout(resolve, 200)) // Increased to 200ms to give more time
+        Promise.all(workflowPromises.map(p => p.catch((err) => {
+          console.error(`⚠️ Workflow promise error (non-fatal):`, err)
+          return null
+        }))), // Wait for all, but catch errors to prevent rejection
+        new Promise(resolve => setTimeout(resolve, 500)) // 500ms to give LLM calls time to start
       ])
-      console.log(`✓ Async workflows started for recipe ${recipe.id}, returning response...`)
+      
+      const waitTime = Date.now() - workflowStartTime
+      console.log(`✓ Async workflows started for recipe ${recipe.id} (waited ${waitTime}ms), returning response...`)
+      console.log(`⚠️ Workflows will continue in background after response is sent`)
     } else {
       console.log(`⚠️ No workflows to trigger for recipe ${recipe.id}`)
     }

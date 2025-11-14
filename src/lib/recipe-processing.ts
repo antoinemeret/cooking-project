@@ -34,6 +34,7 @@ export async function generateSummaryWithLLM(instructions: string): Promise<stri
         apiKey: anthropicApiKey,
       })
       
+      const responseStartTime = Date.now()
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 500,
@@ -44,6 +45,8 @@ export async function generateSummaryWithLLM(instructions: string): Promise<stri
           }
         ]
       })
+      const responseTime = Date.now() - responseStartTime
+      console.log(`🤖 Anthropic API call took ${responseTime}ms`)
       
       const content = response.content[0]
       if (content.type === 'text') {
@@ -200,6 +203,7 @@ export async function processIngredientsWithLLM(rawIngredients: string[]): Promi
         apiKey: anthropicApiKey,
       })
       
+      const responseStartTime = Date.now()
       const response = await anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 2000,
@@ -210,6 +214,8 @@ export async function processIngredientsWithLLM(rawIngredients: string[]): Promi
           }
         ]
       })
+      const responseTime = Date.now() - responseStartTime
+      console.log(`🤖 Anthropic API call took ${responseTime}ms`)
       
       const content = response.content[0]
       if (content.type === 'text') {
@@ -337,7 +343,11 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
 
     console.log(`🥕 Processing ${rawIngredients.length} raw ingredients for recipe ${recipeId}`)
     // Process through LLM
+    const llmStartTime = Date.now()
     const cleanIngredients = await processIngredientsWithLLM(rawIngredients)
+    const llmTime = Date.now() - llmStartTime
+    console.log(`🥕 LLM ingredient processing took ${llmTime}ms`)
+    
     if (cleanIngredients.length === 0) {
       console.warn(`⚠️ No clean ingredients extracted for recipe ${recipeId}`)
       return
@@ -346,6 +356,7 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
     console.log(`🥕 Extracted ${cleanIngredients.length} clean ingredients: ${cleanIngredients.join(', ')}`)
 
     // Ensure all ingredients exist first (create if they don't)
+    const dbStartTime = Date.now()
     const ingredientIds: number[] = []
     for (const name of cleanIngredients) {
       let ingredient = await prisma.ingredient.findUnique({
@@ -370,7 +381,9 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
         }
       }
     })
-    console.log(`✅ Processed and saved ${cleanIngredients.length} ingredients for recipe ${recipeId}`)
+    const dbTime = Date.now() - dbStartTime
+    const totalTime = Date.now() - llmStartTime
+    console.log(`✅ Processed and saved ${cleanIngredients.length} ingredients for recipe ${recipeId} in ${totalTime}ms (LLM: ${llmTime}ms, DB: ${dbTime}ms)`)
   } catch (err) {
     console.error(`❌ Error processing ingredients for recipe ${recipeId}:`, err)
     throw err
