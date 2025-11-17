@@ -1,11 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
+// Disable caching for this route
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET(req: NextRequest) {
   try {
     const recipes = await prisma.recipe.findMany({
       include: { 
         ingredients: true 
+      },
+      orderBy: {
+        createdAt: 'desc'
       }
     })
     
@@ -21,6 +28,11 @@ export async function GET(req: NextRequest) {
         parsedRawIngredients = []
       }
       
+      // Ensure recipe has required fields
+      if (!recipe.title) {
+        console.warn(`Recipe ${recipe.id} is missing a title`)
+      }
+      
       return {
         ...recipe,
         // Overwrite ingredients with parsed rawIngredients for backwards compatibility
@@ -29,7 +41,18 @@ export async function GET(req: NextRequest) {
       }
     })
     
-    return NextResponse.json({ recipes: recipesWithParsedIngredients })
+    console.log(`Returning ${recipesWithParsedIngredients.length} recipes, IDs: ${recipesWithParsedIngredients.map(r => r.id).join(', ')}`)
+    
+    return NextResponse.json(
+      { recipes: recipesWithParsedIngredients },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }
+    )
   } catch (err) {
     console.error('Error in /api/recipes/list:', err)
     return NextResponse.json({ 
