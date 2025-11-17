@@ -44,7 +44,6 @@ export function RecipeCard({
   const [imageError, setImageError] = useState(false)
   const [isSheetOpen, setIsSheetOpen] = useState(false)
   const [initialAction, setInitialAction] = useState<string | undefined>(undefined)
-  const [savedScrollPosition, setSavedScrollPosition] = useState<number>(0)
 
   const handleAddToPlanner = () => {
     onAddToPlanner?.(recipe.id)
@@ -55,9 +54,6 @@ export function RecipeCard({
   }
 
   const handleOpenSheet = (action?: string) => {
-    // Save current scroll position
-    const currentScrollPosition = window.scrollY || document.documentElement.scrollTop
-    setSavedScrollPosition(currentScrollPosition)
     setInitialAction(action)
     setIsSheetOpen(true)
   }
@@ -65,11 +61,7 @@ export function RecipeCard({
   const handleCloseSheet = () => {
     setIsSheetOpen(false)
     setInitialAction(undefined)
-    
-    // Restore scroll position after a short delay to ensure sheet is closed
-    setTimeout(() => {
-      window.scrollTo(0, savedScrollPosition)
-    }, 100)
+    // Don't restore scroll position - let the page maintain its natural scroll state
   }
 
   return (

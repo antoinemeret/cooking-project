@@ -393,11 +393,9 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
         (updateError?.message?.includes('Unique constraint failed on the fields: (`id`)'))
       
       if (isUniqueConstraintOnId) {
-        console.warn(`[processAndSaveIngredients] Sequence out of sync for recipe ${recipeId}, resetting Ingredient sequence...`, {
-          errorCode: updateError?.code,
-          errorMessage: updateError?.message,
-          modelName: updateError?.meta?.modelName
-        })
+        // This is expected when sequences get out of sync (e.g., after data imports)
+        // We'll automatically fix it by resetting the sequences
+        console.log(`[processAndSaveIngredients] Sequence out of sync detected for recipe ${recipeId} (model: ${updateError?.meta?.modelName || 'unknown'}), auto-fixing...`)
         
         try {
           // Reset the Ingredient sequence (most likely culprit when creating via connectOrCreate)
@@ -414,7 +412,7 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
                           false)
           `)
           
-          console.log(`[processAndSaveIngredients] Sequences reset, retrying update for recipe ${recipeId}...`)
+          console.log(`[processAndSaveIngredients] Sequences reset successfully, retrying update for recipe ${recipeId}...`)
           
           // Retry the update
           updatedRecipe = await prisma.recipe.update({
@@ -431,8 +429,10 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
               }
             }
           })
+          
+          console.log(`[processAndSaveIngredients] ✅ Successfully recovered from sequence sync issue for recipe ${recipeId}`)
         } catch (retryError: any) {
-          console.error(`[processAndSaveIngredients] Retry after sequence reset failed for recipe ${recipeId}:`, retryError)
+          console.error(`[processAndSaveIngredients] ❌ Retry after sequence reset failed for recipe ${recipeId}:`, retryError)
           throw retryError
         }
       } else {
