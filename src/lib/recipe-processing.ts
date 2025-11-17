@@ -355,103 +355,26 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
 
     console.log(`🥕 Extracted ${cleanIngredients.length} clean ingredients: ${cleanIngredients.join(', ')}`)
 
-    // Ensure all ingredients exist first (create if they don't)
-    // Use retry logic with exponential backoff to handle race conditions
+    // Use Prisma's connectOrCreate to atomically handle ingredient creation/connection
+    // This is much more reliable than manual retry logic and handles race conditions at the DB level
     const dbStartTime = Date.now()
-    const ingredientIds: number[] = []
-    const failedIngredients: string[] = []
     
-    for (const name of cleanIngredients) {
-      let ingredient: { id: number } | null = null
-      let retries = 5 // Increase retries for better reliability
-      let attempt = 0
-      
-      while (retries > 0 && !ingredient) {
-        attempt++
-        try {
-          // First, try to find existing (most common case after first creation)
-          ingredient = await prisma.ingredient.findUnique({
-            where: { name }
-          })
-          
-          // If found, we're done
-          if (ingredient) {
-            console.log(`✓ Found ingredient "${name}" (id: ${ingredient.id})`)
-            ingredientIds.push(ingredient.id)
-            break
-          }
-          
-          // Not found, try to create
-          try {
-            ingredient = await prisma.ingredient.create({
-              data: { name, startSeason: 1, endSeason: 12 }
-            })
-            console.log(`✓ Created ingredient "${name}" (id: ${ingredient.id})`)
-            ingredientIds.push(ingredient.id)
-            break // Success, exit retry loop
-          } catch (createError: any) {
-            // If create fails due to unique constraint on 'name', another process created it
-            if (createError.code === 'P2002') {
-              const target = createError.meta?.target || []
-              if (target.includes('name')) {
-                console.log(`🔄 Race condition detected for ingredient "${name}" (attempt ${attempt}), retrying find...`)
-                // Wait with exponential backoff (50ms, 100ms, 200ms, etc.)
-                const delay = Math.min(50 * Math.pow(2, attempt - 1), 500)
-                await new Promise(resolve => setTimeout(resolve, delay))
-                // Try to find again - the other process should have committed by now
-                ingredient = await prisma.ingredient.findUnique({
-                  where: { name }
-                })
-                if (ingredient) {
-                  console.log(`✓ Found ingredient "${name}" after race condition (id: ${ingredient.id})`)
-                  ingredientIds.push(ingredient.id)
-                  break
-                }
-              } else {
-                // Unknown unique constraint error (e.g., on 'id' which shouldn't happen)
-                console.error(`❌ Unexpected unique constraint error for "${name}":`, createError.meta)
-                throw createError
-              }
-            } else {
-              // Other error (not a race condition)
-              throw createError
-            }
-          }
-        } catch (error: any) {
-          console.warn(`⚠️ Error processing ingredient "${name}" (${retries} retries left, attempt ${attempt}):`, error?.message || error)
-          retries--
-          if (retries > 0) {
-            // Exponential backoff for general errors
-            const delay = Math.min(100 * Math.pow(2, attempt - 1), 1000)
-            await new Promise(resolve => setTimeout(resolve, delay))
-          }
-        }
-      }
-      
-      if (!ingredient) {
-        console.error(`❌ Failed to find or create ingredient "${name}" after ${attempt} attempts`)
-        failedIngredients.push(name)
-      }
-    }
+    // Prepare connectOrCreate operations for all ingredients
+    const ingredientConnectOrCreate = cleanIngredients.map((name: string) => ({
+      where: { name },
+      create: { name, startSeason: 1, endSeason: 12 }
+    }))
     
-    if (failedIngredients.length > 0) {
-      console.warn(`⚠️ ${failedIngredients.length} ingredients could not be processed: ${failedIngredients.join(', ')}`)
-    }
+    console.log(`🔗 Linking ${cleanIngredients.length} ingredients to recipe ${recipeId} using connectOrCreate...`)
     
-    if (ingredientIds.length === 0) {
-      console.error(`❌ No ingredients could be saved for recipe ${recipeId}. All ${cleanIngredients.length} ingredients failed.`)
-      return // Don't update recipe if no ingredients were saved
-    }
-    
-    console.log(`✅ Successfully processed ${ingredientIds.length}/${cleanIngredients.length} ingredients for recipe ${recipeId}`)
-
-    // Update recipe: disconnect all, then connect to new ones
-    console.log(`🔗 Linking ${ingredientIds.length} ingredients to recipe ${recipeId}...`)
-    await prisma.recipe.update({
+    // Update recipe: use connectOrCreate to atomically connect existing or create new ingredients
+    // This handles race conditions at the database level, avoiding unique constraint errors
+    const updatedRecipe = await prisma.recipe.update({
       where: { id: recipeId },
       data: {
         ingredients: {
-          set: ingredientIds.map(id => ({ id }))
+          set: [], // Clear existing connections first
+          connectOrCreate: ingredientConnectOrCreate
         }
       },
       include: {
@@ -461,13 +384,12 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
       }
     })
     
+    const linkedIngredientNames = updatedRecipe.ingredients.map(ing => ing.name)
+    console.log(`✅ Successfully linked ${updatedRecipe.ingredients.length} ingredients to recipe ${recipeId}: ${linkedIngredientNames.join(', ')}`)
+    
     const dbTime = Date.now() - dbStartTime
     const totalTime = Date.now() - llmStartTime
-    console.log(`✅ Processed and saved ${ingredientIds.length} ingredients for recipe ${recipeId} in ${totalTime}ms (LLM: ${llmTime}ms, DB: ${dbTime}ms)`)
-    
-    if (failedIngredients.length > 0) {
-      console.log(`⚠️ Note: ${failedIngredients.length} ingredients failed: ${failedIngredients.join(', ')}`)
-    }
+    console.log(`✅ Processed and saved ${updatedRecipe.ingredients.length} ingredients for recipe ${recipeId} in ${totalTime}ms (LLM: ${llmTime}ms, DB: ${dbTime}ms)`)
   } catch (err) {
     console.error(`❌ Error processing ingredients for recipe ${recipeId}:`, err)
     throw err
