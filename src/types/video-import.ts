@@ -44,6 +44,8 @@ export interface ExtractedRecipeData {
   instructions: string
   sourceUrl: string
   transcription: string
+  preparationTime?: number // in minutes
+  cookingTime?: number // in minutes
   metadata?: {
     platform: VideoPlatform
     videoId?: string
