@@ -753,6 +753,37 @@ export async function POST(req: NextRequest) {
   const body = await req.json() // Only call this ONCE
   const { url, recipeId, extractThumbnail } = body
 
+  // Check if video processing is available (yt-dlp required)
+  // In serverless environments like Vercel, system binaries aren't available
+  // Skip video processing check for thumbnail extraction (doesn't use yt-dlp)
+  if (!extractThumbnail) {
+    const isVercel = !!process.env.VERCEL
+    
+    // Return error immediately for video processing in Vercel serverless environment
+    // yt-dlp is not available in serverless functions
+    if (isVercel) {
+      const errorResponse: VideoImportResponse = {
+        status: 'error',
+        timestamp: Date.now(),
+        error: 'Video import is currently only available in local development. Video processing requires system tools (yt-dlp) that are not available in serverless environments.',
+        code: VideoImportErrorCode.VIDEO_DOWNLOAD_FAILED,
+        details: {
+          stage: 'analyzing',
+          suggestions: [
+            'Video import requires local development environment',
+            'Use photo import or URL scraping as alternatives',
+            'Contact support for serverless video processing options'
+          ]
+        }
+      }
+      
+      return new Response(JSON.stringify(errorResponse), {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+  }
+
   // Instagram thumbnail extraction branch
   if (extractThumbnail && url && recipeId && url.includes('instagram.com')) {
     // 1. Fetch the Instagram page
