@@ -20,6 +20,8 @@ type ImportedRecipe = {
   candidateImages?: string[]
   sourceUrl?: string
   transcription?: string
+  preparationTime?: number
+  cookingTime?: number
   videoMetadata?: {
     platform: string
     extractedAt: string
@@ -158,7 +160,10 @@ export function ImportRecipeDialog({
         instructions: instructions.trim(),
         tags: JSON.stringify(tags),
         // Include selected image URL if user selected a candidate image
-        selectedImageUrl: candidateImages[selectedImageIdx] || null
+        selectedImageUrl: candidateImages[selectedImageIdx] || null,
+        // Include preparationTime and cookingTime if they exist (from video import)
+        preparationTime: recipe?.preparationTime,
+        cookingTime: recipe?.cookingTime
       }
 
       // Update toast - saving recipe

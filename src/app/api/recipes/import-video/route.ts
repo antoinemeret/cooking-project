@@ -46,6 +46,8 @@ Extract and structure this into a recipe with this JSON format:
       "order": 2
     }
   ],
+  "preparationTime": minutes_as_number_or_null,
+  "cookingTime": minutes_as_number_or_null,
   "language": "fr",
   "confidence": "high/medium/low"
 }
@@ -54,7 +56,10 @@ RULES:
 1. Title, ingredients, and instructions must be in French
 2. Extract all mentioned ingredients 
 3. Create clear step-by-step instructions
-4. Return only valid JSON
+4. **preparationTime**: Temps nécessaire pour préparer les ingrédients avant la cuisson (hacher, mélanger, mariner, etc.) en minutes
+5. **cookingTime**: Temps nécessaire pour la cuisson effective (cuire, mijoter, rôtir, etc.) en minutes
+6. Si les temps ne sont pas explicitement mentionnés, estimez-les en fonction du type de recette et des instructions
+7. Return only valid JSON
 
 ${metadata ? `Metadata: ${JSON.stringify(metadata, null, 2)}` : ''}`
 
@@ -993,6 +998,9 @@ export async function POST(req: NextRequest) {
                     : (structuredData.instructions || ''),
                   sourceUrl: validatedUrl,
                   transcription,
+                  // Pass through preparationTime and cookingTime if extracted from video
+                  preparationTime: typeof structuredData.preparationTime === 'number' ? Math.max(0, Math.round(structuredData.preparationTime)) : undefined,
+                  cookingTime: typeof structuredData.cookingTime === 'number' ? Math.max(0, Math.round(structuredData.cookingTime)) : undefined,
                   metadata: {
                     platform: platform as 'instagram' | 'tiktok' | 'youtube',
                     videoId: undefined, // TODO: Extract from validator

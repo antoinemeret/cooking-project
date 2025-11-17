@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   let body: any = null
   try {
     body = await req.json()
-    const { title, rawIngredients, instructions, tags, selectedImageUrl } = body
+    const { title, rawIngredients, instructions, tags, selectedImageUrl, preparationTime, cookingTime } = body
     
     console.log('📥 POST /api/recipes called with:', {
       title,
@@ -36,8 +36,8 @@ export async function POST(req: NextRequest) {
           startSeason: 1, // Set defaults or get from user/LLM
           endSeason: 12,
           grade: 0,
-          preparationTime: 0,
-          cookingTime: 0
+          preparationTime: typeof preparationTime === 'number' && preparationTime > 0 ? preparationTime : 0,
+          cookingTime: typeof cookingTime === 'number' && cookingTime > 0 ? cookingTime : 0
           // Do not connect ingredients here
         },
         include: { ingredients: true }
@@ -255,7 +255,11 @@ export async function POST(req: NextRequest) {
       console.log(`⚠️ Skipping ingredient processing for recipe ${recipe.id}: rawIngredients=${!!rawIngredients}, isArray=${Array.isArray(rawIngredients)}, length=${rawIngredients?.length || 0}, id=${!!recipe.id}`)
     }
 
-    if (instructions && instructions.trim().length > 0 && recipe.id) {
+    // Only trigger time estimation if times weren't already provided
+    const hasProvidedTimes = (typeof preparationTime === 'number' && preparationTime > 0) || 
+                             (typeof cookingTime === 'number' && cookingTime > 0)
+    
+    if (instructions && instructions.trim().length > 0 && recipe.id && !hasProvidedTimes) {
       console.log(`🔄 Triggering time estimation for recipe ${recipe.id}`)
       const timesPromise = estimateAndSaveTimes(recipe.id)
         .then(() => {

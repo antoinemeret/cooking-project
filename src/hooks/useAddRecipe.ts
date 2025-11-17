@@ -198,6 +198,15 @@ export function useAddRecipe() {
     })
     setImportStatus(`Processing ${platformName} video...`)
     
+    // Show initial loading toast immediately
+    const toastId = toast.loading("Detecting video...", {
+      description: `Analyzing ${platformName} video URL`,
+      duration: Infinity // Keep it visible until we dismiss it
+    })
+    
+    // Small delay to ensure toast is rendered
+    await new Promise(resolve => setTimeout(resolve, 50))
+    
     let videoRecipe: any = null
     try {
       const response = await fetch('/api/recipes/import-video', {
@@ -256,18 +265,58 @@ export function useAddRecipe() {
                 error: 'Processing failed'
               }
               setImportStatus(statusMessages[eventData.status] || `Processing ${eventData.status}...`)
+              
+              // Update toast with progress (similar to photo import)
+              if (eventData.status === 'analyzing') {
+                toast.loading("Analyzing video URL...", {
+                  id: toastId,
+                  description: `Validating ${platformName} video and platform compatibility`,
+                  duration: Infinity
+                })
+              } else if (eventData.status === 'downloading') {
+                toast.loading("Extracting audio from video...", {
+                  id: toastId,
+                  description: "Downloading video and extracting audio content",
+                  duration: Infinity
+                })
+              } else if (eventData.status === 'transcribing') {
+                toast.loading("Converting speech to text...", {
+                  id: toastId,
+                  description: "Using AI to transcribe the video audio",
+                  duration: Infinity
+                })
+              } else if (eventData.status === 'structuring') {
+                toast.loading("Extracting recipe information...", {
+                  id: toastId,
+                  description: "Structuring recipe from transcription",
+                  duration: Infinity
+                })
+              } else if (eventData.status && eventData.status !== 'done' && eventData.status !== 'error') {
+                // Update toast for any other status messages
+                toast.loading(eventData.message || eventData.status, {
+                  id: toastId,
+                  description: `Processing ${platformName} video...`,
+                  duration: Infinity
+                })
+              }
             }
 
             if (eventData.status === 'done' && eventData.data) {
               // Convert video import response to expected format with metadata
               const videoRecipeData: ExtractedRecipeData = eventData.data
               console.log('🎬 Video import response data (mobile):', videoRecipeData)
+              
+              // Dismiss loading toast
+              toast.dismiss(toastId)
+              
               videoRecipe = {
                 title: videoRecipeData.title,
                 rawIngredients: videoRecipeData.rawIngredients || [],
                 instructions: videoRecipeData.instructions || '',
                 sourceUrl: videoRecipeData.sourceUrl,
                 transcription: videoRecipeData.transcription,
+                preparationTime: videoRecipeData.preparationTime,
+                cookingTime: videoRecipeData.cookingTime,
                 videoMetadata: videoRecipeData.metadata ? {
                   platform: videoRecipeData.metadata.platform,
                   videoId: videoRecipeData.metadata.videoId,
@@ -280,9 +329,17 @@ export function useAddRecipe() {
                 suggestedTags: videoRecipeData.suggestedTags || [],
                 candidateImages: videoRecipeData.candidateImages || []
               }
+              
+              // Small delay before showing success to ensure loading toast is dismissed
+              setTimeout(() => {
+                toast.success("Recipe extracted successfully!", {
+                  description: "Review and edit the details before saving"
+                })
+              }, 100)
             }
 
             if (eventData.status === 'error') {
+              toast.dismiss(toastId)
               throw new Error(eventData.error || 'Video processing failed')
             }
           } catch (parseError) {
@@ -293,6 +350,10 @@ export function useAddRecipe() {
       }
     } catch (error) {
       console.error('Video import error (mobile):', error)
+      toast.dismiss(toastId)
+      toast.error("Failed to import recipe from video", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred"
+      })
       setImportError(`Failed to import video: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsVideoProcessing(false)
@@ -316,17 +377,19 @@ export function useAddRecipe() {
 
     try {
       // Detect if this is a video URL
+      console.log('🔍 handleUrlSubmit - checking URL:', importUrl)
       const videoDetection = detectVideoUrl(importUrl)
+      console.log('🔍 handleUrlSubmit - detection result:', videoDetection)
       let success = false
       let newRecipe: any = null
       
       if (videoDetection.isVideoUrl) {
-        console.log('🎬 Video URL detected, using video import workflow')
+        console.log('🎬 Video URL detected, using video import workflow', { platform: videoDetection.platform })
         const videoRecipe = await handleVideoUrlImport(importUrl, videoDetection.platform)
         success = !!videoRecipe
         newRecipe = videoRecipe
       } else {
-        console.log('🔗 Regular URL detected, using scrape workflow')
+        console.log('🔗 Regular URL detected, using scrape workflow', { isVideoUrl: videoDetection.isVideoUrl, platform: videoDetection.platform, confidence: videoDetection.confidence })
         const response = await fetch("/api/scrape", {
           method: "POST",
           headers: {

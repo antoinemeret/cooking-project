@@ -10,6 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { ImportRecipeDialog } from '@/components/recipes/ImportRecipeDialog'
+import { detectVideoUrl, getPlatformDisplayName } from "@/lib/video-url-detector"
+import { VideoProcessingProgress, VideoProcessingStage } from "@/components/recipes/VideoProgressTracker"
+import { ExtractedRecipeData, VideoPlatform } from "@/types/video-import"
 
 export default function RecipesPage() {
   const [recipes, setRecipes] = useState([])
@@ -39,7 +42,12 @@ export default function RecipesPage() {
   async function fetchRecipes() {
     setLoading(true)
     try {
-      const res = await fetch('/api/recipes/list')
+      const res = await fetch('/api/recipes/list', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      })
       if (!res.ok) {
         console.error('Failed to fetch recipes:', res.status, res.statusText)
         toast.error('Failed to load recipes')
@@ -134,6 +142,186 @@ export default function RecipesPage() {
     photoInputRef.current?.click()
   }
 
+  const handleVideoUrlImport = async (url: string, platform: any) => {
+    const platformName = getPlatformDisplayName(platform)
+    
+    // Initialize video processing state
+    setIsVideoProcessing(true)
+    setVideoProgress({
+      stage: 'analyzing',
+      message: `Initializing ${platformName} video processing...`,
+      platform: platformName,
+      timestamp: Date.now()
+    })
+    setImportStatus(`Processing ${platformName} video...`)
+    
+    // Show initial loading toast immediately
+    const toastId = toast.loading("Detecting video...", {
+      description: `Analyzing ${platformName} video URL`,
+      duration: Infinity // Keep it visible until we dismiss it
+    })
+    
+    // Small delay to ensure toast is rendered
+    await new Promise(resolve => setTimeout(resolve, 50))
+    
+    let videoRecipe: any = null
+    try {
+      const response = await fetch('/api/recipes/import-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+
+      if (!response.ok || !response.body) {
+        throw new Error('Video import failed')
+      }
+
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        const lines = chunk.split('\n').filter(line => line.trim())
+        
+        for (const line of lines) {
+          try {
+            const eventData = JSON.parse(line)
+            
+            if (eventData.status) {
+              // Map API status to VideoProcessingStage
+              const stageMapping: Record<string, VideoProcessingStage> = {
+                analyzing: 'analyzing',
+                downloading: 'downloading', 
+                transcribing: 'transcribing',
+                structuring: 'structuring',
+                done: 'done',
+                error: 'error'
+              }
+
+              const stage = stageMapping[eventData.status] || 'analyzing'
+              
+              // Update video progress with detailed information
+              setVideoProgress({
+                stage,
+                message: eventData.message || eventData.status,
+                platform: platformName,
+                timestamp: Date.now(),
+                error: eventData.error
+              })
+
+              // Update import status for backwards compatibility
+              const statusMessages: Record<string, string> = {
+                analyzing: 'Analyzing video URL...',
+                downloading: 'Downloading video content...',
+                transcribing: 'Converting speech to text...',
+                structuring: 'Extracting recipe information...',
+                done: 'Processing complete!',
+                error: 'Processing failed'
+              }
+              setImportStatus(statusMessages[eventData.status] || `Processing ${eventData.status}...`)
+              
+              // Update toast with progress (similar to photo import)
+              if (eventData.status === 'analyzing') {
+                toast.loading("Analyzing video URL...", {
+                  id: toastId,
+                  description: `Validating ${platformName} video and platform compatibility`,
+                  duration: Infinity
+                })
+              } else if (eventData.status === 'downloading') {
+                toast.loading("Extracting audio from video...", {
+                  id: toastId,
+                  description: "Downloading video and extracting audio content",
+                  duration: Infinity
+                })
+              } else if (eventData.status === 'transcribing') {
+                toast.loading("Converting speech to text...", {
+                  id: toastId,
+                  description: "Using AI to transcribe the video audio",
+                  duration: Infinity
+                })
+              } else if (eventData.status === 'structuring') {
+                toast.loading("Extracting recipe information...", {
+                  id: toastId,
+                  description: "Structuring recipe from transcription",
+                  duration: Infinity
+                })
+              } else if (eventData.status && eventData.status !== 'done' && eventData.status !== 'error') {
+                // Update toast for any other status messages
+                toast.loading(eventData.message || eventData.status, {
+                  id: toastId,
+                  description: `Processing ${platformName} video...`,
+                  duration: Infinity
+                })
+              }
+            }
+
+            if (eventData.status === 'done' && eventData.data) {
+              // Convert video import response to expected format with metadata
+              const videoRecipeData: ExtractedRecipeData = eventData.data
+              console.log('🎬 Video import response data:', videoRecipeData)
+              
+              // Dismiss loading toast
+              toast.dismiss(toastId)
+              
+              videoRecipe = {
+                title: videoRecipeData.title,
+                rawIngredients: videoRecipeData.rawIngredients || [],
+                instructions: videoRecipeData.instructions || '',
+                sourceUrl: videoRecipeData.sourceUrl,
+                transcription: videoRecipeData.transcription,
+                preparationTime: videoRecipeData.preparationTime,
+                cookingTime: videoRecipeData.cookingTime,
+                videoMetadata: videoRecipeData.metadata ? {
+                  platform: videoRecipeData.metadata.platform,
+                  videoId: videoRecipeData.metadata.videoId,
+                  duration: videoRecipeData.metadata.duration,
+                  extractedAt: videoRecipeData.metadata.extractedAt || new Date().toISOString()
+                } : {
+                  platform: platform.toLowerCase() as VideoPlatform,
+                  extractedAt: new Date().toISOString()
+                },
+                tags: videoRecipeData.suggestedTags || [],
+                candidateImages: videoRecipeData.candidateImages || []
+              }
+              
+              // Small delay before showing success to ensure loading toast is dismissed
+              setTimeout(() => {
+                toast.success("Recipe extracted successfully!", {
+                  description: "Review and edit the details before saving"
+                })
+              }, 100)
+            }
+
+            if (eventData.status === 'error') {
+              toast.dismiss(toastId)
+              throw new Error(eventData.error || 'Video processing failed')
+            }
+          } catch (parseError) {
+            console.error('Error parsing video import event:', parseError)
+            console.error('Problematic line:', line)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Video import error:', error)
+      toast.dismiss(toastId)
+      toast.error("Failed to import recipe from video", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred"
+      })
+      setImportError(`Failed to import video: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsVideoProcessing(false)
+      setVideoProgress(null)
+      setIsImporting(false)
+      setImportStatus("Add new")
+    }
+    
+    return videoRecipe
+  }
+
   const handleUrlSubmit = async () => {
     if (!importUrl.trim()) {
       setImportError("Please enter a URL")
@@ -145,34 +333,58 @@ export default function RecipesPage() {
     setImportStatus("Processing URL...")
 
     try {
-      const response = await fetch("/api/scrape", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ url: importUrl }),
-      })
+      // Detect if this is a video URL
+      console.log('🔍 handleUrlSubmit - checking URL:', importUrl)
+      const videoDetection = detectVideoUrl(importUrl)
+      console.log('🔍 handleUrlSubmit - detection result:', videoDetection)
+      let success = false
+      let newRecipe: any = null
+      
+      if (videoDetection.isVideoUrl) {
+        console.log('🎬 Video URL detected, using video import workflow', { platform: videoDetection.platform })
+        const videoRecipe = await handleVideoUrlImport(importUrl, videoDetection.platform)
+        success = !!videoRecipe
+        newRecipe = videoRecipe
+      } else {
+        console.log('🔗 Regular URL detected, using scrape workflow', { isVideoUrl: videoDetection.isVideoUrl, platform: videoDetection.platform, confidence: videoDetection.confidence })
+        const response = await fetch("/api/scrape", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ url: importUrl }),
+        })
 
-      if (!response.ok) {
-        throw new Error("URL import failed")
+        if (!response.ok) {
+          throw new Error("URL import failed")
+        }
+
+        const result = await response.json()
+        
+        if (result.recipe) {
+          success = true
+          newRecipe = {
+            title: result.recipe.title,
+            rawIngredients: result.recipe.rawIngredients || [],
+            instructions: result.recipe.instructions || '',
+            tags: result.recipe.suggestedTags || [],
+            candidateImages: result.images || []
+          }
+        } else {
+          throw new Error(result.error || "No recipe data received")
+        }
       }
 
-      const result = await response.json()
-      
-      if (result.recipe) {
-        setImportedRecipe({
-          title: result.recipe.title,
-          rawIngredients: result.recipe.rawIngredients || [],
-          instructions: result.recipe.instructions || '',
-          tags: result.recipe.suggestedTags || [],
-          candidateImages: result.images || []
-        })
+      if (success && newRecipe) {
+        // Open the review dialog
+        setImportedRecipe(newRecipe)
         setIsUrlInputDialogOpen(false)
         setIsManualMode(false)
         setIsImportDialogOpen(true)
         setImportUrl("")
+        toast.success("Recipe extracted successfully!")
       } else {
-        throw new Error(result.error || "No recipe data received")
+        throw new Error("Failed to extract recipe")
       }
     } catch (error: any) {
       console.error("URL import error:", error)
@@ -564,7 +776,16 @@ export default function RecipesPage() {
       {/* Desktop uses dropdown menu in header; no separate options dialog */}
 
       {/* URL Input Dialog */}
-      <Dialog open={isUrlInputDialogOpen} onOpenChange={setIsUrlInputDialogOpen}>
+      <Dialog open={isUrlInputDialogOpen} onOpenChange={(open) => {
+        setIsUrlInputDialogOpen(open)
+        // Reset import state when dialog closes
+        if (!open) {
+          setIsImporting(false)
+          setImportStatus("Add new")
+          setImportError("")
+          setImportUrl("")
+        }
+      }}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Import Recipe from URL or Video</DialogTitle>
@@ -597,7 +818,18 @@ export default function RecipesPage() {
       {/* Import Recipe Dialog */}
       <ImportRecipeDialog
         open={isImportDialogOpen}
-        onOpenChange={setIsImportDialogOpen}
+        onOpenChange={(open) => {
+          setIsImportDialogOpen(open)
+          // Reset import state when dialog closes
+          if (!open) {
+            setIsImporting(false)
+            setImportStatus("Add new")
+            setImportError("")
+            setImportedRecipe(null)
+            setIsVideoProcessing(false)
+            setVideoProgress(null)
+          }
+        }}
         recipe={importedRecipe}
         setRecipe={setImportedRecipe}
         isManualMode={isManualMode}
