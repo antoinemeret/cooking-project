@@ -4,7 +4,7 @@ import { addTagToCanonicalList } from '@/lib/tag-utils'
 import sharp from 'sharp'
 import { uploadToBlob } from '@/lib/blob'
 import * as Sentry from '@sentry/nextjs'
-import { generateAndSaveSummary, processAndSaveIngredients } from '@/lib/recipe-processing'
+import { generateAndSaveSummary, processAndSaveIngredients, estimateAndSaveTimes } from '@/lib/recipe-processing'
 
 export async function POST(req: NextRequest) {
   let body: any = null
@@ -253,6 +253,25 @@ export async function POST(req: NextRequest) {
       console.log(`✓ Ingredient workflow promise added for recipe ${recipe.id}`)
     } else {
       console.log(`⚠️ Skipping ingredient processing for recipe ${recipe.id}: rawIngredients=${!!rawIngredients}, isArray=${Array.isArray(rawIngredients)}, length=${rawIngredients?.length || 0}, id=${!!recipe.id}`)
+    }
+
+    if (instructions && instructions.trim().length > 0 && recipe.id) {
+      console.log(`🔄 Triggering time estimation for recipe ${recipe.id}`)
+      const timesPromise = estimateAndSaveTimes(recipe.id)
+        .then(() => {
+          console.log(`✅ Time estimation completed for recipe ${recipe.id}`)
+        })
+        .catch(err => {
+          console.error(`❌ Error estimating times for recipe ${recipe.id}:`, err)
+          Sentry.captureException(err, {
+            tags: { api: 'recipes-create', workflow: 'estimate-times' },
+            extra: { recipeId: recipe.id }
+          })
+        })
+      workflowPromises.push(timesPromise)
+      console.log(`✓ Time estimation workflow promise added for recipe ${recipe.id}`)
+    } else {
+      console.log(`⚠️ Skipping time estimation for recipe ${recipe.id}: instructions=${!!instructions}, instructionsLength=${instructions?.trim().length || 0}, id=${!!recipe.id}`)
     }
 
     console.log(`📊 Total workflow promises: ${workflowPromises.length} for recipe ${recipe.id}`)

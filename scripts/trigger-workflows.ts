@@ -4,7 +4,7 @@
  * Or: node --loader ts-node/esm scripts/trigger-workflows.ts <recipeId1> [recipeId2] ...
  */
 
-import { generateAndSaveSummary, processAndSaveIngredients } from '../src/lib/recipe-processing.js'
+import { generateAndSaveSummary, processAndSaveIngredients, estimateAndSaveTimes } from '../src/lib/recipe-processing.js'
 
 async function main() {
   const recipeIds = process.argv.slice(2).map(id => parseInt(id, 10)).filter(id => !isNaN(id))
@@ -25,6 +25,10 @@ async function main() {
       // Process ingredients
       console.log(`🥕 Triggering ingredient processing...`)
       await processAndSaveIngredients(recipeId)
+      
+      // Estimate times
+      console.log(`⏱️ Triggering time estimation...`)
+      await estimateAndSaveTimes(recipeId)
       
       console.log(`✅ Completed workflows for recipe ${recipeId}`)
     } catch (error) {

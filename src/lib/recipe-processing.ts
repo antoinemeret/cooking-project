@@ -453,3 +453,196 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
   }
 }
 
+/**
+ * Estimate preparation and cooking times from recipe instructions using LLM
+ */
+export async function estimateTimesWithLLM(instructions: string): Promise<{ preparationTime: number; cookingTime: number }> {
+  const prompt = `
+You are a helpful cooking assistant that accurately estimates recipe preparation and cooking times.
+
+Analyze the following recipe instructions and provide accurate estimates for:
+1. **Preparation time** (prep time): Time needed to prepare ingredients before cooking (chopping, mixing, marinating, etc.)
+2. **Cooking time**: Time needed for actual cooking (baking, simmering, roasting, etc.)
+
+Return your response as a JSON object with exactly this format:
+{
+  "preparationTime": <number in minutes>,
+  "cookingTime": <number in minutes>
+}
+
+Important guidelines:
+- Be realistic and accurate based on the instructions
+- Preparation time includes: chopping, dicing, mixing, marinating, preheating oven, etc.
+- Cooking time includes: baking, simmering, roasting, grilling, etc.
+- If instructions mention specific times (e.g., "bake for 30 minutes"), use those
+- If multiple cooking steps, sum the active cooking time
+- If instructions are unclear, make reasonable estimates based on typical cooking practices
+- Return only the JSON object, no additional text or explanations
+
+Recipe instructions:
+"""
+${instructions}
+"""
+`
+
+  let output = ''
+  // Default to anthropic if ANTHROPIC_API_KEY is set, otherwise ollama (for local dev)
+  const provider = process.env.LLM_PROVIDER || (process.env.ANTHROPIC_API_KEY ? 'anthropic' : 'ollama')
+  console.log(`🤖 Using LLM provider: ${provider} for time estimation`)
+  
+  try {
+    if (provider === 'anthropic') {
+      const anthropicApiKey = process.env.ANTHROPIC_API_KEY
+      if (!anthropicApiKey) {
+        throw new Error('ANTHROPIC_API_KEY environment variable is not set')
+      }
+      console.log(`🤖 Calling Anthropic Claude API for time estimation`)
+      const { Anthropic } = await import('@anthropic-ai/sdk')
+      const anthropic = new Anthropic({
+        apiKey: anthropicApiKey,
+      })
+      
+      const responseStartTime = Date.now()
+      const response = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 500,
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+      const responseTime = Date.now() - responseStartTime
+      console.log(`🤖 Anthropic API call for time estimation took ${responseTime}ms`)
+      
+      const content = response.content[0]
+      if (content.type === 'text') {
+        output = content.text
+        console.log(`🤖 Anthropic response received for time estimation, length: ${output.length}`)
+      } else {
+        throw new Error('Unexpected response format from Anthropic')
+      }
+    } else if (provider === 'ollama') {
+      const ollamaUrl = process.env.OLLAMA_HOST || 'http://localhost:11434'
+      console.log(`🤖 Calling Ollama at ${ollamaUrl}/api/generate for time estimation`)
+      const res = await fetch(`${ollamaUrl}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'llama3:8b',
+          prompt,
+          stream: false
+        })
+      })
+      
+      if (!res.ok) {
+        const errorText = await res.text()
+        console.error(`❌ Ollama API error (${res.status}):`, errorText)
+        throw new Error(`Ollama API error: ${res.status} ${errorText}`)
+      }
+      
+      const data = await res.json()
+      output = data.response || ''
+      console.log(`🤖 Ollama response received for time estimation, length: ${output.length}`)
+    } else {
+      const hfApiKey = process.env.HF_API_KEY
+      if (!hfApiKey) {
+        throw new Error('HF_API_KEY environment variable is not set')
+      }
+      console.log(`🤖 Calling HuggingFace API for time estimation`)
+      const res = await fetch('https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.3', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${hfApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ inputs: prompt }),
+      })
+      
+      if (!res.ok) {
+        const errorData = await res.text()
+        console.error(`❌ HuggingFace API error (${res.status}):`, errorData)
+        throw new Error(`HuggingFace API error: ${res.status} ${errorData}`)
+      }
+      
+      const data = await res.json()
+      output = data?.[0]?.generated_text || data?.generated_text || ''
+      console.log(`🤖 HuggingFace response received for time estimation, length: ${output.length}`)
+    }
+  } catch (error) {
+    console.error(`❌ Error calling LLM for time estimation:`, error)
+    throw error
+  }
+  
+  if (!output.trim()) {
+    console.warn(`⚠️ LLM returned empty response for time estimation`)
+    return { preparationTime: 0, cookingTime: 0 }
+  }
+
+  // Extract JSON from the LLM response
+  let jsonContent = output.trim()
+  
+  // Try to find JSON in code blocks first
+  const jsonMatch = output.match(/```json\s*([\s\S]*?)\s*```/)
+  if (jsonMatch) {
+    jsonContent = jsonMatch[1].trim()
+  } else {
+    // Try to find JSON object in the response
+    const objectMatch = output.match(/\{[\s\S]*\}/)
+    if (objectMatch) {
+      jsonContent = objectMatch[0]
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(jsonContent)
+    const preparationTime = Math.max(0, Math.round(parsed.preparationTime || 0))
+    const cookingTime = Math.max(0, Math.round(parsed.cookingTime || 0))
+    
+    console.log(`✅ Parsed time estimation: prep=${preparationTime}min, cooking=${cookingTime}min`)
+    return { preparationTime, cookingTime }
+  } catch (parseError) {
+    console.error(`❌ Error parsing JSON from LLM response for time estimation:`, parseError)
+    console.error(`Problematic JSON string: ${jsonContent.substring(0, 500)}`)
+    return { preparationTime: 0, cookingTime: 0 }
+  }
+}
+
+/**
+ * Estimate preparation and cooking times for a recipe and update it in the database
+ */
+export async function estimateAndSaveTimes(recipeId: number): Promise<void> {
+  console.log(`⏱️ Starting time estimation for recipe ${recipeId}`)
+  try {
+    const recipe = await prisma.recipe.findUnique({ where: { id: recipeId } })
+    if (!recipe) {
+      console.error(`❌ Recipe ${recipeId} not found`)
+      return
+    }
+    if (!recipe.instructions) {
+      console.error(`❌ Recipe ${recipeId} has no instructions`)
+      return
+    }
+
+    console.log(`⏱️ Estimating times for recipe ${recipeId} with ${recipe.instructions.length} chars of instructions`)
+    const { preparationTime, cookingTime } = await estimateTimesWithLLM(recipe.instructions)
+    
+    if (preparationTime > 0 || cookingTime > 0) {
+      await prisma.recipe.update({
+        where: { id: recipeId },
+        data: { 
+          preparationTime,
+          cookingTime
+        }
+      })
+      console.log(`✅ Estimated and saved times for recipe ${recipeId}: prep=${preparationTime}min, cooking=${cookingTime}min`)
+    } else {
+      console.warn(`⚠️ No valid times estimated for recipe ${recipeId}`)
+    }
+  } catch (err) {
+    console.error(`❌ Error estimating times for recipe ${recipeId}:`, err)
+    throw err
+  }
+}
+
