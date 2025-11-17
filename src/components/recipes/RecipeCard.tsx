@@ -131,6 +131,7 @@ export function RecipeCard({
             {/* Action Buttons - Mobile */}
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={handleAddToPlanner}
                 className="bg-neutral-700 h-6 w-6 rounded-[18px] flex items-center justify-center hover:bg-neutral-800 transition-colors"
                 title="Add to planner"
@@ -149,6 +150,7 @@ export function RecipeCard({
                 }}
               >
                 <button
+                  type="button"
                   className="h-6 w-6 rounded-[18px] flex items-center justify-center hover:bg-muted transition-colors"
                   title="More actions"
                 >
@@ -218,6 +220,7 @@ export function RecipeCard({
         {/* Action Buttons - Desktop */}
         <div className="flex items-center gap-2 flex-shrink-0">
           <button
+            type="button"
             onClick={handleAddToPlanner}
             className="bg-neutral-700 h-6 w-6 rounded-[18px] flex items-center justify-center hover:bg-neutral-800 transition-colors"
             title="Add to planner"
@@ -228,6 +231,7 @@ export function RecipeCard({
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
+                type="button"
                 className="h-6 w-6 rounded-[18px] flex items-center justify-center hover:bg-muted transition-colors"
                 title="More actions"
               >

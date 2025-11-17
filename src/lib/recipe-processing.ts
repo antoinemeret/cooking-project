@@ -369,20 +369,77 @@ export async function processAndSaveIngredients(recipeId: number): Promise<void>
     
     // Update recipe: use connectOrCreate to atomically connect existing or create new ingredients
     // This handles race conditions at the database level, avoiding unique constraint errors
-    const updatedRecipe = await prisma.recipe.update({
-      where: { id: recipeId },
-      data: {
-        ingredients: {
-          set: [], // Clear existing connections first
-          connectOrCreate: ingredientConnectOrCreate
+    let updatedRecipe
+    try {
+      updatedRecipe = await prisma.recipe.update({
+        where: { id: recipeId },
+        data: {
+          ingredients: {
+            set: [], // Clear existing connections first
+            connectOrCreate: ingredientConnectOrCreate
+          }
+        },
+        include: {
+          ingredients: {
+            select: { id: true, name: true }
+          }
         }
-      },
-      include: {
-        ingredients: {
-          select: { id: true, name: true }
+      })
+    } catch (updateError: any) {
+      // Check if error is due to unique constraint on id (sequence out of sync)
+      // This can happen when connectOrCreate tries to create new ingredients
+      const isUniqueConstraintOnId = 
+        (updateError?.code === 'P2002' && updateError?.meta?.target?.includes('id')) ||
+        (updateError?.message?.includes('Unique constraint failed on the fields: (`id`)'))
+      
+      if (isUniqueConstraintOnId) {
+        console.warn(`[processAndSaveIngredients] Sequence out of sync for recipe ${recipeId}, resetting Ingredient sequence...`, {
+          errorCode: updateError?.code,
+          errorMessage: updateError?.message,
+          modelName: updateError?.meta?.modelName
+        })
+        
+        try {
+          // Reset the Ingredient sequence (most likely culprit when creating via connectOrCreate)
+          await prisma.$executeRawUnsafe(`
+            SELECT setval(pg_get_serial_sequence('"Ingredient"', 'id'), 
+                          COALESCE((SELECT MAX(id) FROM "Ingredient"), 0) + 1, 
+                          false)
+          `)
+          
+          // Also reset Recipe sequence just in case
+          await prisma.$executeRawUnsafe(`
+            SELECT setval(pg_get_serial_sequence('"Recipe"', 'id'), 
+                          COALESCE((SELECT MAX(id) FROM "Recipe"), 0) + 1, 
+                          false)
+          `)
+          
+          console.log(`[processAndSaveIngredients] Sequences reset, retrying update for recipe ${recipeId}...`)
+          
+          // Retry the update
+          updatedRecipe = await prisma.recipe.update({
+            where: { id: recipeId },
+            data: {
+              ingredients: {
+                set: [],
+                connectOrCreate: ingredientConnectOrCreate
+              }
+            },
+            include: {
+              ingredients: {
+                select: { id: true, name: true }
+              }
+            }
+          })
+        } catch (retryError: any) {
+          console.error(`[processAndSaveIngredients] Retry after sequence reset failed for recipe ${recipeId}:`, retryError)
+          throw retryError
         }
+      } else {
+        // Re-throw if it's a different error
+        throw updateError
       }
-    })
+    }
     
     const linkedIngredientNames = updatedRecipe.ingredients.map(ing => ing.name)
     console.log(`✅ Successfully linked ${updatedRecipe.ingredients.length} ingredients to recipe ${recipeId}: ${linkedIngredientNames.join(', ')}`)
