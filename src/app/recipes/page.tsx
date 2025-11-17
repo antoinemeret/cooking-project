@@ -372,21 +372,38 @@ export default function RecipesPage() {
   }, [recipes, filteredRecipes, searchTerm])
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (containerRef.current?.scrollTop === 0) {
+    // Only activate pull-to-refresh if we're at the very top of the page
+    if (containerRef.current && containerRef.current.scrollTop === 0) {
       startY.current = e.touches[0].clientY
       setIsPulling(true)
+    } else {
+      setIsPulling(false)
     }
   }
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isPulling || containerRef.current?.scrollTop !== 0) return
+    // Don't interfere with normal scrolling
+    if (!isPulling) return
+    
+    // Double-check we're still at the top
+    if (containerRef.current?.scrollTop !== 0) {
+      setIsPulling(false)
+      setPullDistance(0)
+      return
+    }
     
     const currentY = e.touches[0].clientY
-    const distance = Math.max(0, currentY - startY.current)
+    const distance = currentY - startY.current
     
+    // Only prevent default and show pull indicator if pulling DOWN (positive distance)
+    // If distance is negative, user is scrolling up, so don't interfere
     if (distance > 0) {
       e.preventDefault()
       setPullDistance(Math.min(distance * 0.5, 100)) // Damping effect
+    } else {
+      // User is scrolling up, cancel pull-to-refresh
+      setIsPulling(false)
+      setPullDistance(0)
     }
   }
 

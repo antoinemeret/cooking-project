@@ -24,22 +24,71 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
     }
 
-    const recipe = await prisma.recipe.create({
-      data: {
-        title,
-        summary: '', // Add summary if available
-        instructions,
-        rawIngredients: JSON.stringify(rawIngredients), // Store as JSON string
-        tags: tags || '[]', // Store tags if provided
-        startSeason: 1, // Set defaults or get from user/LLM
-        endSeason: 12,
-        grade: 0,
-        preparationTime: 0,
-        cookingTime: 0
-        // Do not connect ingredients here
-      },
-      include: { ingredients: true }
-    })
+    let recipe
+    try {
+      recipe = await prisma.recipe.create({
+        data: {
+          title,
+          summary: '', // Add summary if available
+          instructions,
+          rawIngredients: JSON.stringify(rawIngredients), // Store as JSON string
+          tags: tags || '[]', // Store tags if provided
+          startSeason: 1, // Set defaults or get from user/LLM
+          endSeason: 12,
+          grade: 0,
+          preparationTime: 0,
+          cookingTime: 0
+          // Do not connect ingredients here
+        },
+        include: { ingredients: true }
+      })
+    } catch (createError: any) {
+      // Check if error is due to unique constraint on id (sequence out of sync)
+      const isUniqueConstraintOnId = 
+        (createError?.code === 'P2002' && createError?.meta?.target?.includes('id')) ||
+        (createError?.message?.includes('Unique constraint failed on the fields: (`id`)'))
+      
+      if (isUniqueConstraintOnId) {
+        console.warn('[POST /api/recipes] Sequence out of sync, resetting...', {
+          errorCode: createError?.code,
+          errorMessage: createError?.message
+        })
+        
+        try {
+          // Reset the sequence to the max ID + 1
+          await prisma.$executeRawUnsafe(`
+            SELECT setval(pg_get_serial_sequence('"Recipe"', 'id'), 
+                          COALESCE((SELECT MAX(id) FROM "Recipe"), 0) + 1, 
+                          false)
+          `)
+          
+          console.log('[POST /api/recipes] Sequence reset, retrying creation...')
+          
+          // Retry the creation
+          recipe = await prisma.recipe.create({
+            data: {
+              title,
+              summary: '',
+              instructions,
+              rawIngredients: JSON.stringify(rawIngredients),
+              tags: tags || '[]',
+              startSeason: 1,
+              endSeason: 12,
+              grade: 0,
+              preparationTime: 0,
+              cookingTime: 0
+            },
+            include: { ingredients: true }
+          })
+        } catch (retryError: any) {
+          console.error('[POST /api/recipes] Retry after sequence reset failed:', retryError)
+          throw retryError
+        }
+      } else {
+        // Re-throw if it's a different error
+        throw createError
+      }
+    }
     
     console.log(`✅ Recipe created with ID ${recipe.id}:`, {
       hasInstructions: !!instructions && instructions.length > 0,
