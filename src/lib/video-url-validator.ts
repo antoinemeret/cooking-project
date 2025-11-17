@@ -39,8 +39,9 @@ const PLATFORM_PATTERNS = {
   youtube: [
     /^https?:\/\/(www\.)?youtube\.com\/shorts\/[A-Za-z0-9_-]+/,
     /^https?:\/\/youtu\.be\/[A-Za-z0-9_-]+/,
-    /^https?:\/\/(www\.)?youtube\.com\/watch\?v=[A-Za-z0-9_-]+.*[&#]t=\d+s?/,
-    /^https?:\/\/(m\.)?youtube\.com\/shorts\/[A-Za-z0-9_-]+/
+    /^https?:\/\/(www\.)?youtube\.com\/watch\?v=[A-Za-z0-9_-]+/, // Match all watch URLs (backend will validate if it's a Short)
+    /^https?:\/\/(m\.)?youtube\.com\/shorts\/[A-Za-z0-9_-]+/,
+    /^https?:\/\/(m\.)?youtube\.com\/watch\?v=[A-Za-z0-9_-]+/ // Mobile watch URLs
   ]
 }
 

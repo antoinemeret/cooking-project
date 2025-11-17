@@ -21,17 +21,23 @@ export function detectVideoUrl(url: string): VideoUrlDetection {
 
   // Clean and normalize URL
   const normalizedUrl = url.trim().toLowerCase()
+  
+  // Debug logging for video detection
+  console.log('🔍 detectVideoUrl called with URL:', url)
+  console.log('🔍 Normalized URL:', normalizedUrl)
 
-  // Instagram patterns
+  // Instagram patterns (support various formats including URLs with query params)
   const instagramPatterns = [
     /instagram\.com\/reel\//,
     /instagram\.com\/p\//,
     /instagram\.com\/tv\//,
     /instagr\.am\/p\//,
+    /instagr\.am\/reel\//, // Support shortened Instagram URLs for reels
   ]
 
   for (const pattern of instagramPatterns) {
     if (pattern.test(normalizedUrl)) {
+      console.log('✅ Instagram URL detected:', pattern.toString())
       return { isVideoUrl: true, platform: 'instagram', confidence: 'high' }
     }
   }
@@ -46,20 +52,23 @@ export function detectVideoUrl(url: string): VideoUrlDetection {
 
   for (const pattern of tiktokPatterns) {
     if (pattern.test(normalizedUrl)) {
+      console.log('✅ TikTok URL detected:', pattern.toString())
       return { isVideoUrl: true, platform: 'tiktok', confidence: 'high' }
     }
   }
 
-  // YouTube patterns (focusing on Shorts and short videos)
+  // YouTube patterns (detect all YouTube URLs, backend will validate if it's a Short)
   const youtubePatterns = [
     /youtube\.com\/shorts\//,
     /youtu\.be\//,
-    /youtube\.com\/watch\?v=[\w-]+.*[&#]t=\d+s?/, // Short clips with timestamps
+    /youtube\.com\/watch\?v=[\w-]+/, // Match all watch URLs (with or without timestamp)
     /m\.youtube\.com\/shorts\//,
+    /m\.youtube\.com\/watch\?v=[\w-]+/, // Mobile watch URLs
   ]
 
   for (const pattern of youtubePatterns) {
     if (pattern.test(normalizedUrl)) {
+      console.log('✅ YouTube URL detected:', pattern.toString())
       return { isVideoUrl: true, platform: 'youtube', confidence: 'high' }
     }
   }
@@ -67,9 +76,11 @@ export function detectVideoUrl(url: string): VideoUrlDetection {
   // Generic video file extensions (lower confidence)
   const videoExtensions = /\.(mp4|mov|avi|mkv|webm|m4v)($|\?)/
   if (videoExtensions.test(normalizedUrl)) {
+    console.log('✅ Video file extension detected')
     return { isVideoUrl: true, platform: null, confidence: 'medium' }
   }
 
+  console.log('❌ No video URL pattern matched')
   return { isVideoUrl: false, platform: null, confidence: 'low' }
 }
 
