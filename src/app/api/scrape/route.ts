@@ -222,13 +222,14 @@ export async function POST(req: NextRequest) {
       // Get LLM tag suggestions
       try {
         const tagResults = await getRecipeTagSuggestions({
-          title: recipe.title,
-          ingredients: recipe.rawIngredients,
-          instructions: recipe.instructions
+          title: recipe.title || '',
+          ingredients: Array.isArray(recipe.rawIngredients) ? recipe.rawIngredients : [],
+          instructions: recipe.instructions || ''
         })
-        recipe.suggestedTags = tagResults.claude?.tags || []
-        recipe.suggestedTagsRaw = tagResults.claude?.raw || ''
+        recipe.suggestedTags = tagResults.tags || []
+        recipe.suggestedTagsRaw = tagResults.raw || ''
       } catch (err) {
+        console.error('Error getting tag suggestions:', err)
         recipe.suggestedTags = []
         recipe.suggestedTagsRaw = ''
       }
@@ -247,13 +248,14 @@ export async function POST(req: NextRequest) {
     // Get LLM tag suggestions
     try {
       const tagResults = await getRecipeTagSuggestions({
-        title: recipe.title,
-        ingredients: recipe.rawIngredients,
-        instructions: recipe.instructions
+        title: recipe.title || '',
+        ingredients: Array.isArray(recipe.rawIngredients) ? recipe.rawIngredients : [],
+        instructions: recipe.instructions || ''
       })
-      recipe.suggestedTags = tagResults.claude?.tags || []
-      recipe.suggestedTagsRaw = tagResults.claude?.raw || ''
+      recipe.suggestedTags = tagResults.tags || []
+      recipe.suggestedTagsRaw = tagResults.raw || ''
     } catch (err) {
+      console.error('Error getting tag suggestions:', err)
       recipe.suggestedTags = []
       recipe.suggestedTagsRaw = ''
     }
